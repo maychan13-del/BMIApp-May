@@ -1,0 +1,444 @@
+<!--
+ionicinit.min.js 的功能與說明：
+push(name, title)：切換到目標頁，並回傳 Promise；約 100ms 後才 resolve，所以你可安全接 .then(...) 做「切頁後渲染」。
+presentAlert(header=null, message=null, buttons=null)：快速顯示 Ionic Alert；流程是建立元件 → 設定內容/按鈕 → 顯示 → 移除，避免殘留 DOM。
+presentActionSheet(header=null, subHeader=null, buttons=null)：給使用者一組操作選單（例如編輯/刪除/取消）；同樣會在關閉後清理元件。
+presentToast(message=null, duration=1800, position='bottom', color=null)：短暫提示訊息（成功、錯誤、已儲存等），支援時間、位置、顏色與按鈕。
+window.load 初始化段：動態載入 Ionic CDN 資源、建立 ion-app/ion-router/ion-nav、自動把所有 page-* 註冊成 route，最後呼叫 setUpIonic 完成啟動。
+
+ionicinit.min.js 的使用方式：
+1. 在 HTML 中使用 page-* 標籤定義頁面結構。
+2. 在 JavaScript 中使用 push('page-xxx') 切換頁面。
+3. 使用 presentAlert(...)、presentActionSheet(...)、presentToast(...) 顯示提示框。
+-->
+<!DOCTYPE html>
+<html lang="zh-Hant">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <meta name="viewport" content="viewport-fit=cover, width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="format-detection" content="telephone=no" />
+    <meta name="msapplication-tap-highlight" content="no" />
+    <meta name="HandheldFriendly" content="true" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="BMI 計算器" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="theme-color" content="#3880ff" />
+    <title>BMI 計算器</title>
+    <link rel="manifest" href="manifest.json" />
+    <link rel="shortcut icon apple-touch-icon" href="appicon.png" />
+    <script src="ionicinit.min.js"></script>
+    <style>
+      :root {
+        --ion-color-primary: #3880ff;
+        --ion-color-primary-rgb: 56, 128, 255;
+        --ion-color-primary-contrast: #ffffff;
+        --ion-color-primary-contrast-rgb: 255, 255, 255;
+        --ion-color-primary-shade: #3171e0;
+        --ion-color-primary-tint: #4c8dff;
+      }
+      .intro-text {
+        color: var(--ion-color-medium);
+        font-size: 0.95rem;
+        line-height: 1.5;
+        margin: 0 0 12px;
+      }
+      .stat-card ion-card-title {
+        font-size: 1rem;
+      }
+      .stat-card ion-card-subtitle {
+        margin-top: 8px;
+        font-size: 1.35rem;
+        font-weight: 600;
+      }
+      #records-empty {
+        padding: 32px 16px;
+      }
+      #records-empty ion-icon {
+        margin-bottom: 12px;
+      }
+    </style>
+  </head>
+
+  <body>
+    <page-home>
+      <ion-header>
+        <ion-toolbar color="primary">
+          <ion-title>BMI 計算器</ion-title>
+        </ion-toolbar>
+      </ion-header>
+      <ion-content class="ion-padding">
+        <h1 class="ion-no-margin" style="font-size: 1.5rem;">健康體位小幫手</h1>
+        <p class="intro-text">輸入身高與體重即可計算 BMI，紀錄會保存在手機本機，方便隨時查看。</p>
+
+        <ion-grid class="ion-no-padding">
+          <ion-row>
+            <ion-col size="6">
+              <ion-card class="stat-card">
+                <ion-card-header>
+                  <ion-card-subtitle color="medium">紀錄總數</ion-card-subtitle>
+                  <ion-card-title id="home-record-count">0</ion-card-title>
+                </ion-card-header>
+              </ion-card>
+            </ion-col>
+            <ion-col size="6">
+              <ion-card class="stat-card">
+                <ion-card-header>
+                  <ion-card-subtitle color="medium">最新 BMI</ion-card-subtitle>
+                  <ion-card-title id="home-latest-bmi">—</ion-card-title>
+                  <ion-text color="medium"><p id="home-latest-meta" class="ion-no-margin" style="font-size: 0.85rem;">尚無紀錄</p></ion-text>
+                </ion-card-header>
+              </ion-card>
+            </ion-col>
+          </ion-row>
+        </ion-grid>
+
+        <ion-button expand="block" shape="round" color="primary" onclick="openCalculator();">
+          <ion-icon slot="start" name="calculator-outline"></ion-icon>
+          BMI 計算機
+        </ion-button>
+        <ion-button expand="block" shape="round" fill="outline" color="primary" onclick="openRecords();">
+          <ion-icon slot="start" name="list-outline"></ion-icon>
+          紀錄列表
+        </ion-button>
+      </ion-content>
+    </page-home>
+
+    <page-calculator>
+      <ion-header>
+        <ion-toolbar color="primary">
+          <ion-buttons slot="start">
+            <ion-back-button defaultHref="/"></ion-back-button>
+          </ion-buttons>
+          <ion-title>BMI 計算機</ion-title>
+        </ion-toolbar>
+      </ion-header>
+      <ion-content class="ion-padding">
+        <ion-list lines="full">
+          <ion-item>
+            <ion-label position="stacked">姓名</ion-label>
+            <ion-input id="calc-name" type="text" maxlength="40" placeholder="請輸入姓名"></ion-input>
+          </ion-item>
+          <ion-item>
+            <ion-label position="stacked">身高（公分）</ion-label>
+            <ion-input id="calc-height" inputmode="decimal" type="text" placeholder="例如 170"></ion-input>
+          </ion-item>
+          <ion-item>
+            <ion-label position="stacked">體重（公斤）</ion-label>
+            <ion-input id="calc-weight" inputmode="decimal" type="text" placeholder="例如 65"></ion-input>
+          </ion-item>
+        </ion-list>
+
+        <ion-button expand="block" shape="round" color="primary" onclick="calculateAndSave();">
+          <ion-icon slot="start" name="save-outline"></ion-icon>
+          計算並儲存
+        </ion-button>
+
+        <ion-card id="calc-result-card" style="display: none; margin-top: 16px;">
+          <ion-card-header>
+            <ion-card-subtitle>計算結果</ion-card-subtitle>
+            <ion-card-title id="calc-result-bmi"></ion-card-title>
+          </ion-card-header>
+          <ion-card-content>
+            <ion-chip id="calc-result-category" color="primary"></ion-chip>
+            <p id="calc-result-hint" class="ion-no-margin" style="margin-top: 8px; font-size: 0.9rem; color: var(--ion-color-medium);"></p>
+          </ion-card-content>
+        </ion-card>
+      </ion-content>
+    </page-calculator>
+
+    <page-records>
+      <ion-header>
+        <ion-toolbar color="primary">
+          <ion-buttons slot="start">
+            <ion-back-button defaultHref="/"></ion-back-button>
+          </ion-buttons>
+          <ion-title>紀錄列表</ion-title>
+          <ion-buttons slot="end">
+            <ion-button onclick="confirmClearAll();">
+              <ion-icon slot="icon-only" name="trash-outline"></ion-icon>
+            </ion-button>
+          </ion-buttons>
+        </ion-toolbar>
+      </ion-header>
+      <ion-content class="ion-padding">
+        <div id="records-empty">
+          <ion-icon name="document-text-outline" color="medium" style="font-size: 64px;"></ion-icon>
+          <p><strong>尚無紀錄</strong></p>
+          <ion-text color="medium"><p>前往 BMI 計算機新增您的第一筆紀錄。</p></ion-text>
+          <ion-button expand="block" shape="round" fill="outline" style="margin-top: 16px;" onclick="openCalculator();">前往計算機</ion-button>
+        </div>
+        <div id="records-list"></div>
+      </ion-content>
+    </page-records>
+
+    <script>
+      var STORAGE_KEY = 'bmi_pwa_records_v1';
+
+      function loadRecords() {
+        try {
+          var raw = localStorage.getItem(STORAGE_KEY);
+          return raw ? JSON.parse(raw) : [];
+        } catch (e) {
+          return [];
+        }
+      }
+
+      function saveRecords(records) {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
+      }
+
+      function escapeHtml(text) {
+        var div = document.createElement('div');
+        div.textContent = text == null ? '' : String(text);
+        return div.innerHTML;
+      }
+
+      function parsePositiveNumber(value) {
+        var n = parseFloat(String(value).replace(/,/g, '').trim());
+        return Number.isFinite(n) && n > 0 ? n : NaN;
+      }
+
+      function computeBMI(heightCm, weightKg) {
+        var m = heightCm / 100;
+        return weightKg / (m * m);
+      }
+
+      function categoryFromBMI(bmi) {
+        if (bmi < 18.5) return '過輕';
+        if (bmi <= 23.9) return '正常';
+        if (bmi <= 26.9) return '過重';
+        if (bmi <= 29.9) return '輕度肥胖';
+        if (bmi <= 34.9) return '中度肥胖';
+        return '重度肥胖';
+      }
+
+      function chipColorForCategory(cat) {
+        switch (cat) {
+          case '過輕':
+            return 'tertiary';
+          case '正常':
+            return 'success';
+          case '過重':
+            return 'warning';
+          case '輕度肥胖':
+          case '中度肥胖':
+            return 'danger';
+          default:
+            return 'danger';
+        }
+      }
+
+      function renderHome() {
+        var records = loadRecords();
+        var countEl = document.getElementById('home-record-count');
+        var bmiEl = document.getElementById('home-latest-bmi');
+        var metaEl = document.getElementById('home-latest-meta');
+        if (!countEl || !bmiEl || !metaEl) return;
+
+        countEl.textContent = String(records.length);
+
+        if (records.length === 0) {
+          bmiEl.textContent = '—';
+          metaEl.textContent = '尚無紀錄';
+          return;
+        }
+
+        var latest = records[0];
+        bmiEl.textContent = typeof latest.bmi === 'number' ? latest.bmi.toFixed(1) : String(latest.bmi);
+        metaEl.textContent =
+          (latest.name ? latest.name + ' · ' : '') + (latest.category || '');
+      }
+
+      function resetCalculatorView() {
+        var card = document.getElementById('calc-result-card');
+        if (card) card.style.display = 'none';
+      }
+
+      function openCalculator() {
+        push('page-calculator').then(function () {
+          resetCalculatorView();
+        });
+      }
+
+      function openRecords() {
+        push('page-records').then(function () {
+          renderRecords();
+        });
+      }
+
+      async function calculateAndSave() {
+        var nameEl = document.getElementById('calc-name');
+        var heightEl = document.getElementById('calc-height');
+        var weightEl = document.getElementById('calc-weight');
+        var name = nameEl ? String(nameEl.value || '').trim() : '';
+        var heightCm = heightEl ? parsePositiveNumber(heightEl.value) : NaN;
+        var weightKg = weightEl ? parsePositiveNumber(weightEl.value) : NaN;
+
+        if (!name) {
+          await presentToast('請輸入姓名', 2000, 'bottom', 'warning');
+          return;
+        }
+        if (!Number.isFinite(heightCm)) {
+          await presentToast('請輸入有效的身高（公分）', 2000, 'bottom', 'warning');
+          return;
+        }
+        if (heightCm < 50 || heightCm > 280) {
+          await presentToast('身高請介於 50～280 公分', 2000, 'bottom', 'warning');
+          return;
+        }
+        if (!Number.isFinite(weightKg)) {
+          await presentToast('請輸入有效的體重（公斤）', 2000, 'bottom', 'warning');
+          return;
+        }
+        if (weightKg < 15 || weightKg > 500) {
+          await presentToast('體重請介於 15～500 公斤', 2000, 'bottom', 'warning');
+          return;
+        }
+
+        var bmi = computeBMI(heightCm, weightKg);
+        var category = categoryFromBMI(bmi);
+        var record = {
+          name: name,
+          heightCm: Math.round(heightCm * 10) / 10,
+          weightKg: Math.round(weightKg * 10) / 10,
+          bmi: Math.round(bmi * 10) / 10,
+          category: category,
+          ts: Date.now(),
+        };
+
+        var records = loadRecords();
+        records.unshift(record);
+        saveRecords(records);
+
+        var card = document.getElementById('calc-result-card');
+        var titleEl = document.getElementById('calc-result-bmi');
+        var chipEl = document.getElementById('calc-result-category');
+        var hintEl = document.getElementById('calc-result-hint');
+
+        if (card && titleEl && chipEl && hintEl) {
+          card.style.display = 'block';
+          titleEl.textContent = 'BMI ' + record.bmi.toFixed(1);
+          chipEl.textContent = category;
+          chipEl.setAttribute('color', chipColorForCategory(category));
+          hintEl.textContent =
+            '身高 ' +
+            record.heightCm +
+            ' cm · 體重 ' +
+            record.weightKg +
+            ' kg（依衛福部成人 BMI 分級）';
+        }
+
+        renderHome();
+        await presentToast('已儲存紀錄', 1800, 'bottom', 'success');
+      }
+
+      function renderRecords() {
+        var records = loadRecords();
+        var listEl = document.getElementById('records-list');
+        var emptyEl = document.getElementById('records-empty');
+        if (!listEl || !emptyEl) return;
+
+        if (records.length === 0) {
+          emptyEl.style.display = 'block';
+          listEl.innerHTML = '';
+          return;
+        }
+
+        emptyEl.style.display = 'none';
+        var html = '';
+        for (var i = 0; i < records.length; i++) {
+          var r = records[i];
+          var dateStr = '';
+          try {
+            dateStr = new Date(r.ts).toLocaleString('zh-TW');
+          } catch (e) {
+            dateStr = '';
+          }
+          var chipColor = chipColorForCategory(r.category);
+          html +=
+            '<ion-card>' +
+            '<ion-card-header>' +
+            '<ion-card-subtitle>' +
+            escapeHtml(dateStr) +
+            '</ion-card-subtitle>' +
+            '<ion-card-title>' +
+            escapeHtml(r.name) +
+            '</ion-card-title>' +
+            '</ion-card-header>' +
+            '<ion-card-content>' +
+            '<p class="ion-no-margin"><strong>BMI</strong> ' +
+            escapeHtml(String(typeof r.bmi === 'number' ? r.bmi.toFixed(1) : r.bmi)) +
+            '</p>' +
+            '<ion-chip color="' +
+            escapeHtml(chipColor) +
+            '" style="margin-top:8px;">' +
+            escapeHtml(r.category || '') +
+            '</ion-chip>' +
+            '<p style="margin-top:12px;font-size:0.9rem;color:var(--ion-color-medium);" class="ion-no-margin">' +
+            '身高 ' +
+            escapeHtml(String(r.heightCm)) +
+            ' cm · 體重 ' +
+            escapeHtml(String(r.weightKg)) +
+            ' kg' +
+            '</p>' +
+            '</ion-card-content>' +
+            '</ion-card>';
+        }
+        listEl.innerHTML = html;
+      }
+
+      function confirmClearAll() {
+        var records = loadRecords();
+        if (records.length === 0) {
+          presentToast('目前沒有任何紀錄', 1800, 'bottom', 'medium');
+          return;
+        }
+
+        presentAlert(
+          '清除全部紀錄',
+          '確定要刪除所有 BMI 紀錄嗎？此操作無法復原。',
+          [
+            { text: '取消', role: 'cancel' },
+            {
+              text: '全部清除',
+              role: 'destructive',
+              handler: function () {
+                localStorage.removeItem(STORAGE_KEY);
+                renderRecords();
+                renderHome();
+                presentToast('已清除全部紀錄', 1800, 'bottom', 'medium');
+              },
+            },
+          ]
+        );
+      }
+
+      function attachNavRefresh() {
+        var nav = document.querySelector('ion-nav');
+        if (!nav || nav.__bmiNavHook) return;
+        nav.__bmiNavHook = true;
+        if (typeof nav.getActive !== 'function') return;
+        nav.addEventListener('ionNavDidChange', function () {
+          nav
+            .getActive()
+            .then(function (active) {
+              var el = active;
+              if (el && typeof el === 'object' && el.el) el = el.el;
+              var tag = el && el.tagName ? el.tagName.toLowerCase() : '';
+              if (tag === 'page-home') renderHome();
+              if (tag === 'page-records') renderRecords();
+            })
+            .catch(function () {});
+        });
+      }
+
+      window.addEventListener('load', function () {
+        setTimeout(function () {
+          attachNavRefresh();
+          renderHome();
+        }, 350);
+      });
+    </script>
+  </body>
+</html>
