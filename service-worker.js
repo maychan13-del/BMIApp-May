@@ -1,11 +1,5 @@
-const CACHE_NAME = "minefield-score-v1";
-const APP_SHELL_FILES = [
-  "./",
-  "./index.html",
-  "./ionicinit.min.js",
-  "./manifest.json",
-  "./appicon.png",
-];
+const CACHE_NAME = "minefield-score-v2";
+const APP_SHELL_FILES = ["./", "./index.html", "./manifest.json", "./appicon.png"];
 
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL_FILES)));

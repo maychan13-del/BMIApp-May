@@ -1,704 +1,736 @@
-<!--
-ionicinit.min.js：push / presentAlert / presentActionSheet / presentToast
--->
 <!DOCTYPE html>
 <html lang="zh-Hant">
   <head>
-    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
-    <meta name="viewport" content="viewport-fit=cover, width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <meta name="format-detection" content="telephone=no" />
-    <meta name="msapplication-tap-highlight" content="no" />
-    <meta name="HandheldFriendly" content="true" />
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="地雷計分" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="theme-color" content="#1f3a5f" />
     <title>Minefield 計分機</title>
     <link rel="manifest" href="manifest.json" />
     <link rel="shortcut icon apple-touch-icon" href="appicon.png" />
-    <script src="ionicinit.min.js"></script>
     <style>
       :root {
-        --ion-color-primary: #1f3a5f;
-        --ion-color-primary-rgb: 31, 58, 95;
-        --ion-color-primary-contrast: #ffffff;
-        --ion-color-primary-contrast-rgb: 255, 255, 255;
-        --ion-color-primary-shade: #1b3354;
-        --ion-color-primary-tint: #354e6f;
+        --ink: #10233f;
+        --muted: #5b6b7f;
+        --bg: #eef3f8;
+        --card: #ffffff;
+        --primary: #1f3a5f;
         --team-a: #c62828;
         --team-b: #2e7d32;
         --team-c: #1565c0;
         --team-d: #ef6c00;
-        --score-ink: #10233f;
+        --safe-top: env(safe-area-inset-top, 0px);
+        --safe-bottom: env(safe-area-inset-bottom, 0px);
       }
 
-      .intro-text {
-        color: var(--ion-color-medium);
-        font-size: 0.92rem;
-        line-height: 1.45;
-        margin: 0 0 14px;
+      * { box-sizing: border-box; }
+      html, body {
+        margin: 0;
+        min-height: 100%;
+        background: var(--bg);
+        color: var(--ink);
+        font-family: "PingFang HK", "Noto Sans TC", "Helvetica Neue", sans-serif;
+        -webkit-tap-highlight-color: transparent;
       }
 
-      .org-banner {
-        background: linear-gradient(135deg, #1f3a5f 0%, #355f8f 100%);
+      button, input { font: inherit; }
+
+      .screen { display: none; min-height: 100dvh; padding-bottom: calc(20px + var(--safe-bottom)); }
+      .screen.active { display: block; }
+
+      .topbar {
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-height: 56px;
+        padding: calc(10px + var(--safe-top)) 14px 10px;
+        background: var(--primary);
         color: #fff;
-        border-radius: 16px;
-        padding: 16px 18px;
-        margin-bottom: 14px;
       }
-
-      .org-banner .label {
-        opacity: 0.85;
-        font-size: 0.85rem;
-      }
-
-      .org-banner .value {
-        font-size: 2rem;
+      .topbar.team-a { background: var(--team-a); }
+      .topbar.team-b { background: var(--team-b); }
+      .topbar.team-c { background: var(--team-c); }
+      .topbar.team-d { background: var(--team-d); }
+      .topbar h1 {
+        flex: 1;
+        margin: 0;
+        font-size: 1.15rem;
         font-weight: 700;
-        letter-spacing: 0.02em;
+      }
+      .icon-btn {
+        border: 0;
+        background: rgba(255,255,255,0.16);
+        color: #fff;
+        width: 40px;
+        height: 40px;
+        border-radius: 12px;
+        font-size: 1.1rem;
+        cursor: pointer;
+      }
+
+      .wrap { padding: 14px; max-width: 560px; margin: 0 auto; }
+
+      .org {
+        background: linear-gradient(135deg, #1f3a5f, #3a6799);
+        color: #fff;
+        border-radius: 18px;
+        padding: 16px 18px;
+        margin-bottom: 12px;
+        box-shadow: 0 10px 24px rgba(16,35,63,0.18);
+      }
+      .org .label { opacity: 0.85; font-size: 0.88rem; }
+      .org .value {
         margin-top: 4px;
+        font-size: 2rem;
+        font-weight: 800;
         font-variant-numeric: tabular-nums;
       }
 
-      .team-grid {
+      .hint {
+        color: var(--muted);
+        font-size: 0.92rem;
+        line-height: 1.45;
+        margin: 0 0 12px;
+      }
+
+      .grid {
         display: grid;
         grid-template-columns: 1fr 1fr;
         gap: 10px;
       }
 
-      .team-tile {
+      .tile {
         border: 0;
-        border-radius: 16px;
-        padding: 14px 12px 12px;
+        border-radius: 18px;
+        min-height: 124px;
+        padding: 14px 12px;
         text-align: left;
         color: #fff;
-        min-height: 118px;
-        box-shadow: 0 8px 18px rgba(16, 35, 63, 0.16);
+        cursor: pointer;
         position: relative;
         overflow: hidden;
-        -webkit-tap-highlight-color: transparent;
+        box-shadow: 0 8px 18px rgba(16,35,63,0.14);
       }
-
-      .team-tile::after {
-        content: '';
+      .tile::after {
+        content: "";
         position: absolute;
-        right: -18px;
+        right: -20px;
         bottom: -28px;
-        width: 88px;
-        height: 88px;
+        width: 90px;
+        height: 90px;
         border-radius: 50%;
-        background: rgba(255, 255, 255, 0.12);
+        background: rgba(255,255,255,0.14);
       }
-
-      .team-tile .name {
-        font-size: 1.05rem;
-        font-weight: 700;
-      }
-
-      .team-tile .meta {
-        font-size: 0.78rem;
-        opacity: 0.9;
-        margin-top: 4px;
-      }
-
-      .team-tile .score {
-        margin-top: 14px;
+      .tile.a { background: linear-gradient(160deg, #d32f2f, #b71c1c); }
+      .tile.b { background: linear-gradient(160deg, #43a047, #1b5e20); }
+      .tile.c { background: linear-gradient(160deg, #1e88e5, #0d47a1); }
+      .tile.d { background: linear-gradient(160deg, #fb8c00, #e65100); }
+      .tile .name { font-size: 1.05rem; font-weight: 700; }
+      .tile .meta { margin-top: 4px; font-size: 0.78rem; opacity: 0.92; }
+      .tile .score {
+        margin-top: 16px;
         font-size: 1.55rem;
         font-weight: 800;
         font-variant-numeric: tabular-nums;
-        letter-spacing: 0.01em;
       }
 
-      .team-a { background: linear-gradient(160deg, #d32f2f, #b71c1c); }
-      .team-b { background: linear-gradient(160deg, #43a047, #1b5e20); }
-      .team-c { background: linear-gradient(160deg, #1e88e5, #0d47a1); }
-      .team-d { background: linear-gradient(160deg, #fb8c00, #e65100); }
-
-      .score-hero {
-        text-align: center;
-        padding: 8px 8px 4px;
+      .rules {
+        margin-top: 14px;
+        background: var(--card);
+        border-radius: 14px;
+        padding: 12px 14px;
+        color: #445468;
+        font-size: 0.88rem;
+        line-height: 1.45;
       }
+      .rules strong { color: var(--ink); }
 
-      .score-hero .eyebrow {
-        color: var(--ion-color-medium);
-        font-size: 0.85rem;
-      }
-
-      .score-hero .big {
-        color: var(--score-ink);
-        font-size: 2.6rem;
-        font-weight: 800;
-        line-height: 1.1;
+      .hero { text-align: center; padding: 8px 4px 2px; }
+      .hero .eyebrow { color: var(--muted); font-size: 0.88rem; }
+      .hero .big {
         margin: 6px 0 2px;
+        font-size: 2.7rem;
+        font-weight: 800;
+        line-height: 1.05;
         font-variant-numeric: tabular-nums;
       }
+      .hero .sub { color: var(--muted); font-size: 0.92rem; }
 
-      .score-hero .sub {
-        color: var(--ion-color-medium);
-        font-size: 0.92rem;
-      }
-
-      .stats-row {
+      .stats {
         display: grid;
-        grid-template-columns: 1fr 1fr 1fr;
+        grid-template-columns: repeat(3, 1fr);
         gap: 8px;
-        margin: 12px 0 16px;
+        margin: 14px 0;
       }
-
-      .stat-box {
-        background: #f4f7fb;
+      .stat {
+        background: var(--card);
         border-radius: 12px;
-        padding: 10px 8px;
+        padding: 10px 6px;
         text-align: center;
       }
-
-      .stat-box .k {
-        display: block;
-        color: var(--ion-color-medium);
-        font-size: 0.75rem;
-      }
-
-      .stat-box .v {
+      .stat .k { display: block; color: var(--muted); font-size: 0.75rem; }
+      .stat .v {
         display: block;
         margin-top: 4px;
         font-size: 1.2rem;
         font-weight: 700;
-        color: var(--score-ink);
         font-variant-numeric: tabular-nums;
       }
 
-      .action-stack ion-button {
+      .btn {
+        width: 100%;
+        border: 0;
+        border-radius: 14px;
+        min-height: 56px;
         margin-bottom: 10px;
-        height: 56px;
+        padding: 12px 14px;
         font-size: 1.05rem;
         font-weight: 700;
+        cursor: pointer;
+        color: #fff;
+      }
+      .btn.primary { background: var(--primary); }
+      .btn.warn { background: #ef6c00; }
+      .btn.ghost {
+        background: transparent;
+        color: var(--primary);
+        border: 2px solid #c5d0de;
       }
 
-      .chip-row {
+      .bonus {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        background: var(--card);
+        border-radius: 14px;
+        padding: 12px 14px;
+        margin: 4px 0 12px;
+      }
+      .bonus h2 { margin: 0; font-size: 1rem; }
+      .bonus p { margin: 4px 0 0; color: var(--muted); font-size: 0.85rem; }
+
+      .switch {
+        position: relative;
+        width: 52px;
+        height: 32px;
+        flex: 0 0 auto;
+      }
+      .switch input { opacity: 0; width: 0; height: 0; }
+      .switch span {
+        position: absolute;
+        inset: 0;
+        background: #c9d3e0;
+        border-radius: 999px;
+        transition: 0.2s;
+      }
+      .switch span::before {
+        content: "";
+        position: absolute;
+        width: 26px;
+        height: 26px;
+        left: 3px;
+        top: 3px;
+        background: #fff;
+        border-radius: 50%;
+        transition: 0.2s;
+      }
+      .switch input:checked + span { background: #2e7d32; }
+      .switch input:checked + span::before { transform: translateX(20px); }
+
+      .chips {
         display: flex;
         flex-wrap: wrap;
         gap: 8px;
-        margin: 4px 0 12px;
+        margin-bottom: 12px;
       }
+      .chip {
+        border: 1px solid #c5d0de;
+        background: #fff;
+        color: var(--ink);
+        border-radius: 999px;
+        padding: 8px 12px;
+        font-size: 0.88rem;
+        cursor: pointer;
+      }
+      .chip.danger { color: #b71c1c; border-color: #f0b7b7; }
 
+      .history h3 {
+        margin: 8px 0 6px;
+        font-size: 1rem;
+      }
       .history-item {
         display: flex;
         justify-content: space-between;
         gap: 10px;
         padding: 10px 0;
-        border-bottom: 1px solid rgba(0, 0, 0, 0.08);
-        font-size: 0.92rem;
-      }
-
-      .history-item:last-child {
-        border-bottom: 0;
-      }
-
-      .history-empty {
-        color: var(--ion-color-medium);
+        border-bottom: 1px solid #dde5ef;
         font-size: 0.9rem;
-        padding: 8px 0 4px;
       }
+      .history-empty { color: var(--muted); font-size: 0.9rem; }
 
-      .rule-note {
-        background: #f4f7fb;
+      .toast {
+        position: fixed;
+        left: 50%;
+        bottom: calc(24px + var(--safe-bottom));
+        transform: translateX(-50%) translateY(20px);
+        background: #1c2b3f;
+        color: #fff;
+        padding: 10px 16px;
+        border-radius: 999px;
+        font-size: 0.92rem;
+        opacity: 0;
+        pointer-events: none;
+        transition: 0.2s ease;
+        z-index: 50;
+        max-width: calc(100vw - 32px);
+        white-space: nowrap;
+      }
+      .toast.show {
+        opacity: 1;
+        transform: translateX(-50%) translateY(0);
+      }
+      .toast.warn { background: #b35c00; }
+      .toast.ok { background: #1b5e20; }
+
+      .modal-backdrop {
+        position: fixed;
+        inset: 0;
+        background: rgba(10, 18, 30, 0.45);
+        display: none;
+        align-items: flex-end;
+        justify-content: center;
+        z-index: 40;
+        padding: 16px;
+      }
+      .modal-backdrop.show { display: flex; }
+      .modal {
+        width: min(420px, 100%);
+        background: #fff;
+        border-radius: 18px;
+        padding: 18px;
+        margin-bottom: var(--safe-bottom);
+      }
+      .modal h3 { margin: 0 0 8px; }
+      .modal p { margin: 0 0 16px; color: var(--muted); }
+      .modal-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+      .modal-actions button {
+        min-height: 46px;
         border-radius: 12px;
-        padding: 12px 14px;
-        font-size: 0.88rem;
-        color: #445468;
-        line-height: 1.45;
-        margin-top: 8px;
+        border: 0;
+        font-weight: 700;
+        cursor: pointer;
       }
-
-      .rule-note strong {
-        color: var(--score-ink);
-      }
-
-      .toolbar-team-a { --background: var(--team-a); --color: #fff; }
-      .toolbar-team-b { --background: var(--team-b); --color: #fff; }
-      .toolbar-team-c { --background: var(--team-c); --color: #fff; }
-      .toolbar-team-d { --background: var(--team-d); --color: #fff; }
+      .modal-actions .cancel { background: #e8eef5; }
+      .modal-actions .danger { background: #c62828; color: #fff; }
     </style>
   </head>
-
   <body>
-    <page-home>
-      <ion-header>
-        <ion-toolbar color="primary">
-          <ion-title>Minefield 計分機</ion-title>
-          <ion-buttons slot="end">
-            <ion-button onclick="confirmResetAll();">
-              <ion-icon slot="icon-only" name="refresh-outline"></ion-icon>
-            </ion-button>
-          </ion-buttons>
-        </ion-toolbar>
-      </ion-header>
-      <ion-content class="ion-padding">
-        <div class="org-banner">
+    <section id="screen-home" class="screen active">
+      <div class="topbar">
+        <h1>Minefield 計分機</h1>
+        <button class="icon-btn" type="button" id="btn-reset-all" aria-label="重設全部">↺</button>
+      </div>
+      <div class="wrap">
+        <div class="org">
           <div class="label">四組合計分數</div>
           <div class="value" id="org-total">0</div>
         </div>
-
-        <p class="intro-text">點選組別，用大掣快速記揭牌／地雷。分數會即時更新，並儲存在呢部電話。</p>
-
-        <div class="team-grid" id="team-grid"></div>
-
-        <div class="rule-note">
+        <p class="hint">點選組別，用大掣快速記揭牌／地雷。分數會即時更新，並儲存在呢部電話。</p>
+        <div class="grid" id="team-grid"></div>
+        <div class="rules">
           <strong>計分規則</strong><br />
           開局 62,000　·　揭牌 −1,000　·　地雷 −2,000　·　正確計劃 +50,000
         </div>
-      </ion-content>
-    </page-home>
+      </div>
+    </section>
 
-    <page-team>
-      <ion-header>
-        <ion-toolbar id="team-toolbar" class="toolbar-team-a">
-          <ion-buttons slot="start">
-            <ion-back-button defaultHref="/" text="返回"></ion-back-button>
-          </ion-buttons>
-          <ion-title id="team-title">組別 A</ion-title>
-          <ion-buttons slot="end">
-            <ion-button onclick="undoLast();">
-              <ion-icon slot="icon-only" name="arrow-undo-outline"></ion-icon>
-            </ion-button>
-          </ion-buttons>
-        </ion-toolbar>
-      </ion-header>
-      <ion-content class="ion-padding">
-        <div class="score-hero">
+    <section id="screen-team" class="screen">
+      <div class="topbar" id="team-topbar">
+        <button class="icon-btn" type="button" id="btn-back" aria-label="返回">←</button>
+        <h1 id="team-title">組別 A</h1>
+        <button class="icon-btn" type="button" id="btn-undo" aria-label="還原">↶</button>
+      </div>
+      <div class="wrap">
+        <div class="hero">
           <div class="eyebrow">剩餘預算／分數</div>
           <div class="big" id="team-score">62,000</div>
           <div class="sub" id="team-final-hint">最終分數（含 bonus）：62,000</div>
         </div>
 
-        <div class="stats-row">
-          <div class="stat-box">
-            <span class="k">揭牌次數</span>
-            <span class="v" id="stat-visits">0</span>
-          </div>
-          <div class="stat-box">
-            <span class="k">地雷次數</span>
-            <span class="v" id="stat-mines">0</span>
-          </div>
-          <div class="stat-box">
-            <span class="k">已扣成本</span>
-            <span class="v" id="stat-cost">0</span>
-          </div>
+        <div class="stats">
+          <div class="stat"><span class="k">揭牌次數</span><span class="v" id="stat-visits">0</span></div>
+          <div class="stat"><span class="k">地雷次數</span><span class="v" id="stat-mines">0</span></div>
+          <div class="stat"><span class="k">已扣成本</span><span class="v" id="stat-cost">0</span></div>
         </div>
 
-        <div class="action-stack">
-          <ion-button expand="block" shape="round" color="primary" onclick="addVisit();">
-            <ion-icon slot="start" name="eye-outline"></ion-icon>
-            揭牌（−1,000）
-          </ion-button>
-          <ion-button expand="block" shape="round" color="warning" onclick="addMineHit();">
-            <ion-icon slot="start" name="alert-circle-outline"></ion-icon>
-            中地雷（揭牌+地雷 −3,000）
-          </ion-button>
-          <ion-button expand="block" shape="round" fill="outline" color="medium" onclick="addMineOnly();">
-            只加地雷罰分（−2,000）
-          </ion-button>
-        </div>
+        <button class="btn primary" type="button" id="btn-visit">揭牌（−1,000）</button>
+        <button class="btn warn" type="button" id="btn-mine-hit">中地雷（揭牌+地雷 −3,000）</button>
+        <button class="btn ghost" type="button" id="btn-mine-only">只加地雷罰分（−2,000）</button>
 
-        <ion-item lines="none" style="--background: #f4f7fb; border-radius: 12px; margin: 6px 0 14px;">
-          <ion-label>
+        <div class="bonus">
+          <div>
             <h2>正確計劃 Bonus</h2>
-            <p>+50,000（計劃完全正確先勾）</p>
-          </ion-label>
-          <ion-toggle id="bonus-toggle"></ion-toggle>
-        </ion-item>
-
-        <div class="chip-row">
-          <ion-chip outline="true" onclick="adjustVisits(-1);">揭牌 −1</ion-chip>
-          <ion-chip outline="true" onclick="adjustVisits(1);">揭牌 +1</ion-chip>
-          <ion-chip outline="true" onclick="adjustMines(-1);">地雷 −1</ion-chip>
-          <ion-chip outline="true" onclick="adjustMines(1);">地雷 +1</ion-chip>
-          <ion-chip color="danger" outline="true" onclick="confirmResetTeam();">重設呢一組</ion-chip>
+            <p>+50,000（計劃完全正確先開）</p>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="bonus-toggle" />
+            <span></span>
+          </label>
         </div>
 
-        <h3 style="margin: 8px 0 4px; font-size: 1rem;">最近操作</h3>
-        <div id="team-history"></div>
-      </ion-content>
-    </page-team>
+        <div class="chips">
+          <button class="chip" type="button" data-adjust="visits:-1">揭牌 −1</button>
+          <button class="chip" type="button" data-adjust="visits:1">揭牌 +1</button>
+          <button class="chip" type="button" data-adjust="mines:-1">地雷 −1</button>
+          <button class="chip" type="button" data-adjust="mines:1">地雷 +1</button>
+          <button class="chip danger" type="button" id="btn-reset-team">重設呢一組</button>
+        </div>
+
+        <div class="history">
+          <h3>最近操作</h3>
+          <div id="team-history"></div>
+        </div>
+      </div>
+    </section>
+
+    <div class="toast" id="toast"></div>
+    <div class="modal-backdrop" id="modal">
+      <div class="modal">
+        <h3 id="modal-title">確認</h3>
+        <p id="modal-msg"></p>
+        <div class="modal-actions">
+          <button type="button" class="cancel" id="modal-cancel">取消</button>
+          <button type="button" class="danger" id="modal-ok">確定</button>
+        </div>
+      </div>
+    </div>
 
     <script>
-      var STORAGE_KEY = 'minefield_scores_v1';
-      var START_SCORE = 62000;
-      var VISIT_COST = 1000;
-      var MINE_COST = 2000;
-      var BONUS = 50000;
-      var TEAM_IDS = ['A', 'B', 'C', 'D'];
-      var TEAM_META = {
-        A: { name: '組別 A', className: 'team-a', toolbar: 'toolbar-team-a' },
-        B: { name: '組別 B', className: 'team-b', toolbar: 'toolbar-team-b' },
-        C: { name: '組別 C', className: 'team-c', toolbar: 'toolbar-team-c' },
-        D: { name: '組別 D', className: 'team-d', toolbar: 'toolbar-team-d' },
-      };
-
-      var activeTeamId = 'A';
-
-      function defaultTeam(id) {
-        return {
-          id: id,
-          visits: 0,
-          mines: 0,
-          bonus: false,
-          history: [],
+      (function () {
+        var STORAGE_KEY = 'minefield_scores_v1';
+        var START_SCORE = 62000;
+        var VISIT_COST = 1000;
+        var MINE_COST = 2000;
+        var BONUS = 50000;
+        var TEAM_IDS = ['A', 'B', 'C', 'D'];
+        var TEAM_META = {
+          A: { name: '組別 A', className: 'a' },
+          B: { name: '組別 B', className: 'b' },
+          C: { name: '組別 C', className: 'c' },
+          D: { name: '組別 D', className: 'd' },
         };
-      }
 
-      function defaultState() {
-        var teams = {};
-        for (var i = 0; i < TEAM_IDS.length; i++) {
-          teams[TEAM_IDS[i]] = defaultTeam(TEAM_IDS[i]);
+        var activeTeamId = 'A';
+        var modalAction = null;
+        var toastTimer = null;
+
+        function defaultTeam(id) {
+          return { id: id, visits: 0, mines: 0, bonus: false, history: [] };
         }
-        return { teams: teams };
-      }
 
-      function loadState() {
-        try {
-          var raw = localStorage.getItem(STORAGE_KEY);
-          if (!raw) return defaultState();
-          var parsed = JSON.parse(raw);
-          if (!parsed || !parsed.teams) return defaultState();
-          var state = defaultState();
-          for (var i = 0; i < TEAM_IDS.length; i++) {
-            var id = TEAM_IDS[i];
-            var t = parsed.teams[id] || {};
-            state.teams[id] = {
-              id: id,
-              visits: Math.max(0, Number(t.visits) || 0),
-              mines: Math.max(0, Number(t.mines) || 0),
-              bonus: !!t.bonus,
-              history: Array.isArray(t.history) ? t.history.slice(0, 40) : [],
-            };
+        function defaultState() {
+          var teams = {};
+          TEAM_IDS.forEach(function (id) { teams[id] = defaultTeam(id); });
+          return { teams: teams };
+        }
+
+        function loadState() {
+          try {
+            var raw = localStorage.getItem(STORAGE_KEY);
+            if (!raw) return defaultState();
+            var parsed = JSON.parse(raw);
+            var state = defaultState();
+            TEAM_IDS.forEach(function (id) {
+              var t = (parsed.teams && parsed.teams[id]) || {};
+              state.teams[id] = {
+                id: id,
+                visits: Math.max(0, Number(t.visits) || 0),
+                mines: Math.max(0, Number(t.mines) || 0),
+                bonus: !!t.bonus,
+                history: Array.isArray(t.history) ? t.history.slice(0, 40) : [],
+              };
+              if (state.teams[id].mines > state.teams[id].visits) {
+                state.teams[id].mines = state.teams[id].visits;
+              }
+            });
+            return state;
+          } catch (e) {
+            return defaultState();
           }
-          return state;
-        } catch (e) {
-          return defaultState();
         }
-      }
 
-      function saveState(state) {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-      }
-
-      function formatNum(n) {
-        return Number(n).toLocaleString('en-US');
-      }
-
-      function remainingBudget(team) {
-        return START_SCORE - team.visits * VISIT_COST - team.mines * MINE_COST;
-      }
-
-      function finalScore(team) {
-        return remainingBudget(team) + (team.bonus ? BONUS : 0);
-      }
-
-      function totalCost(team) {
-        return team.visits * VISIT_COST + team.mines * MINE_COST;
-      }
-
-      function pushHistory(team, label, delta) {
-        team.history.unshift({
-          label: label,
-          delta: delta,
-          ts: Date.now(),
-        });
-        if (team.history.length > 40) team.history.length = 40;
-      }
-
-      function mutateActive(mutator, toastMsg, toastColor) {
-        var state = loadState();
-        var team = state.teams[activeTeamId];
-        if (!team) return false;
-        var result = mutator(team);
-        if (result === false) return false;
-        if (team.mines > team.visits) team.mines = team.visits;
-        saveState(state);
-        renderTeamPage();
-        if (toastMsg) presentToast(toastMsg, 1200, 'bottom', toastColor || 'success');
-        return true;
-      }
-
-      function addVisit() {
-        mutateActive(function (team) {
-          team.visits += 1;
-          pushHistory(team, '揭牌', -VISIT_COST);
-        }, '已記揭牌 −1,000');
-      }
-
-      function addMineHit() {
-        mutateActive(function (team) {
-          team.visits += 1;
-          team.mines += 1;
-          pushHistory(team, '中地雷（揭牌+罰分）', -(VISIT_COST + MINE_COST));
-        }, '已記中地雷 −3,000');
-      }
-
-      function addMineOnly() {
-        var state = loadState();
-        var team = state.teams[activeTeamId];
-        if (!team) return;
-        if (team.mines >= team.visits) {
-          presentToast('地雷次數唔可以多過揭牌次數', 1800, 'bottom', 'warning');
-          return;
+        function saveState(state) {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
         }
-        mutateActive(function (t) {
-          t.mines += 1;
-          pushHistory(t, '地雷罰分', -MINE_COST);
-        }, '已加地雷罰分 −2,000', 'warning');
-      }
 
-      function adjustVisits(delta) {
-        mutateActive(function (team) {
-          var next = team.visits + delta;
-          if (next < 0) return;
-          team.visits = next;
-          if (team.mines > team.visits) team.mines = team.visits;
-          pushHistory(team, delta > 0 ? '手動 +揭牌' : '手動 −揭牌', delta * -VISIT_COST);
-        });
-      }
+        function formatNum(n) {
+          return Number(n).toLocaleString('en-US');
+        }
 
-      function adjustMines(delta) {
-        mutateActive(function (team) {
-          var next = team.mines + delta;
-          if (next < 0) return;
-          if (next > team.visits) {
-            presentToast('請先記揭牌，再加地雷', 1600, 'bottom', 'warning');
-            return;
-          }
-          team.mines = next;
-          pushHistory(team, delta > 0 ? '手動 +地雷' : '手動 −地雷', delta * -MINE_COST);
-        });
-      }
+        function remainingBudget(team) {
+          return START_SCORE - team.visits * VISIT_COST - team.mines * MINE_COST;
+        }
 
-      function bindBonusToggle() {
-        var toggle = document.getElementById('bonus-toggle');
-        if (!toggle || toggle.__bound) return;
-        toggle.__bound = true;
-        toggle.addEventListener('ionChange', function (ev) {
-          var checked = !!(ev && ev.detail && ev.detail.checked);
+        function finalScore(team) {
+          return remainingBudget(team) + (team.bonus ? BONUS : 0);
+        }
+
+        function totalCost(team) {
+          return team.visits * VISIT_COST + team.mines * MINE_COST;
+        }
+
+        function pushHistory(team, label, delta) {
+          team.history.unshift({ label: label, delta: delta, ts: Date.now() });
+          if (team.history.length > 40) team.history.length = 40;
+        }
+
+        function toast(msg, kind) {
+          var el = document.getElementById('toast');
+          el.textContent = msg;
+          el.className = 'toast show' + (kind ? ' ' + kind : '');
+          clearTimeout(toastTimer);
+          toastTimer = setTimeout(function () {
+            el.className = 'toast';
+          }, 1400);
+        }
+
+        function showModal(title, msg, onOk) {
+          document.getElementById('modal-title').textContent = title;
+          document.getElementById('modal-msg').textContent = msg;
+          modalAction = onOk;
+          document.getElementById('modal').classList.add('show');
+        }
+
+        function hideModal() {
+          modalAction = null;
+          document.getElementById('modal').classList.remove('show');
+        }
+
+        function showScreen(name) {
+          document.getElementById('screen-home').classList.toggle('active', name === 'home');
+          document.getElementById('screen-team').classList.toggle('active', name === 'team');
+          window.scrollTo(0, 0);
+        }
+
+        function mutateActive(mutator, msg, kind) {
           var state = loadState();
           var team = state.teams[activeTeamId];
-          if (!team || team.bonus === checked) return;
-          mutateActive(function (t) {
-            t.bonus = checked;
-            pushHistory(t, checked ? '加上 Bonus' : '取消 Bonus', checked ? BONUS : -BONUS);
-          }, checked ? '已加 Bonus +50,000' : '已取消 Bonus');
-        });
-      }
-
-      function undoLast() {
-        var state = loadState();
-        var team = state.teams[activeTeamId];
-        if (!team || !team.history.length) {
-          presentToast('冇可以還原嘅操作', 1400, 'bottom', 'medium');
-          return;
+          if (!team) return;
+          if (mutator(team) === false) return;
+          if (team.mines > team.visits) team.mines = team.visits;
+          saveState(state);
+          renderTeam();
+          renderHome();
+          if (msg) toast(msg, kind || 'ok');
         }
-        var last = team.history[0];
-        mutateActive(function (t) {
-          t.history.shift();
-          if (last.label.indexOf('中地雷') === 0) {
-            t.visits = Math.max(0, t.visits - 1);
-            t.mines = Math.max(0, t.mines - 1);
-          } else if (last.label.indexOf('揭牌') === 0 || last.label.indexOf('手動 +揭牌') === 0) {
-            t.visits = Math.max(0, t.visits - 1);
-            if (t.mines > t.visits) t.mines = t.visits;
-          } else if (last.label.indexOf('手動 −揭牌') === 0) {
-            t.visits += 1;
-          } else if (last.label.indexOf('地雷') === 0 || last.label.indexOf('手動 +地雷') === 0) {
-            t.mines = Math.max(0, t.mines - 1);
-          } else if (last.label.indexOf('手動 −地雷') === 0) {
-            t.mines += 1;
-          } else if (last.label.indexOf('加上 Bonus') === 0) {
-            t.bonus = false;
-          } else if (last.label.indexOf('取消 Bonus') === 0) {
-            t.bonus = true;
-          }
-        }, '已還原：' + last.label, 'medium');
-      }
 
-      function openTeam(id) {
-        activeTeamId = id;
-        push('page-team').then(function () {
-          bindBonusToggle();
-          renderTeamPage();
-        });
-      }
+        function openTeam(id) {
+          activeTeamId = id;
+          showScreen('team');
+          renderTeam();
+        }
 
-      function renderHome() {
-        var state = loadState();
-        var grid = document.getElementById('team-grid');
-        var orgEl = document.getElementById('org-total');
-        if (!grid || !orgEl) return;
+        function renderHome() {
+          var state = loadState();
+          var grid = document.getElementById('team-grid');
+          var org = 0;
+          var html = '';
+          TEAM_IDS.forEach(function (id) {
+            var team = state.teams[id];
+            var final = finalScore(team);
+            org += final;
+            var meta = TEAM_META[id];
+            html +=
+              '<button type="button" class="tile ' + meta.className + '" data-team="' + id + '">' +
+              '<div class="name">' + meta.name + '</div>' +
+              '<div class="meta">揭牌 ' + team.visits + ' · 地雷 ' + team.mines + (team.bonus ? ' · Bonus' : '') + '</div>' +
+              '<div class="score">' + formatNum(final) + '</div>' +
+              '</button>';
+          });
+          grid.innerHTML = html;
+          document.getElementById('org-total').textContent = formatNum(org);
+        }
 
-        var org = 0;
-        var html = '';
-        for (var i = 0; i < TEAM_IDS.length; i++) {
-          var id = TEAM_IDS[i];
-          var team = state.teams[id];
+        function renderTeam() {
+          var state = loadState();
+          var team = state.teams[activeTeamId];
+          var meta = TEAM_META[activeTeamId];
+          var remain = remainingBudget(team);
           var final = finalScore(team);
-          org += final;
-          var meta = TEAM_META[id];
-          html +=
-            '<button type="button" class="team-tile ' +
-            meta.className +
-            '" onclick="openTeam(\'' +
-            id +
-            '\')">' +
-            '<div class="name">' +
-            meta.name +
-            '</div>' +
-            '<div class="meta">揭牌 ' +
-            team.visits +
-            ' · 地雷 ' +
-            team.mines +
-            (team.bonus ? ' · Bonus' : '') +
-            '</div>' +
-            '<div class="score">' +
-            formatNum(final) +
-            '</div>' +
-            '</button>';
-        }
-        grid.innerHTML = html;
-        orgEl.textContent = formatNum(org);
-      }
 
-      function renderTeamPage() {
-        var state = loadState();
-        var team = state.teams[activeTeamId];
-        var meta = TEAM_META[activeTeamId];
-        if (!team || !meta) return;
+          var topbar = document.getElementById('team-topbar');
+          topbar.className = 'topbar team-' + meta.className;
+          document.getElementById('team-title').textContent = meta.name;
+          document.getElementById('team-score').textContent = formatNum(remain);
+          document.getElementById('team-final-hint').textContent =
+            '最終分數（含 bonus）：' + formatNum(final) + (team.bonus ? '（已加 50,000）' : '（未加 bonus）');
+          document.getElementById('stat-visits').textContent = String(team.visits);
+          document.getElementById('stat-mines').textContent = String(team.mines);
+          document.getElementById('stat-cost').textContent = formatNum(totalCost(team));
 
-        var toolbar = document.getElementById('team-toolbar');
-        var title = document.getElementById('team-title');
-        if (toolbar) {
-          toolbar.className = meta.toolbar;
-        }
-        if (title) title.textContent = meta.name;
+          var toggle = document.getElementById('bonus-toggle');
+          if (toggle.checked !== team.bonus) toggle.checked = team.bonus;
 
-        var remain = remainingBudget(team);
-        var final = finalScore(team);
-        var scoreEl = document.getElementById('team-score');
-        var hintEl = document.getElementById('team-final-hint');
-        var visitsEl = document.getElementById('stat-visits');
-        var minesEl = document.getElementById('stat-mines');
-        var costEl = document.getElementById('stat-cost');
-        var toggle = document.getElementById('bonus-toggle');
-        var historyEl = document.getElementById('team-history');
-
-        if (scoreEl) scoreEl.textContent = formatNum(remain);
-        if (hintEl) {
-          hintEl.textContent =
-            '最終分數（含 bonus）：' +
-            formatNum(final) +
-            (team.bonus ? '（已加 50,000）' : '（未加 bonus）');
-        }
-        if (visitsEl) visitsEl.textContent = String(team.visits);
-        if (minesEl) minesEl.textContent = String(team.mines);
-        if (costEl) costEl.textContent = formatNum(totalCost(team));
-        if (toggle && toggle.checked !== team.bonus) {
-          toggle.checked = team.bonus;
-        }
-
-        if (historyEl) {
+          var historyEl = document.getElementById('team-history');
           if (!team.history.length) {
             historyEl.innerHTML = '<div class="history-empty">暫時未有操作紀錄。</div>';
           } else {
-            var h = '';
-            for (var i = 0; i < Math.min(team.history.length, 12); i++) {
-              var item = team.history[i];
-              var time = '';
-              try {
-                time = new Date(item.ts).toLocaleTimeString('zh-HK', {
-                  hour: '2-digit',
-                  minute: '2-digit',
-                  second: '2-digit',
-                });
-              } catch (e) {}
-              var deltaText =
-                (item.delta > 0 ? '+' : '') + formatNum(item.delta);
-              h +=
-                '<div class="history-item"><span>' +
-                time +
-                ' · ' +
-                escapeHtml(item.label) +
-                '</span><strong>' +
-                deltaText +
-                '</strong></div>';
-            }
-            historyEl.innerHTML = h;
+            historyEl.innerHTML = team.history.slice(0, 12).map(function (item) {
+              var time = new Date(item.ts).toLocaleTimeString('zh-HK', {
+                hour: '2-digit', minute: '2-digit', second: '2-digit'
+              });
+              var delta = (item.delta > 0 ? '+' : '') + formatNum(item.delta);
+              return '<div class="history-item"><span>' + time + ' · ' + item.label +
+                '</span><strong>' + delta + '</strong></div>';
+            }).join('');
           }
         }
 
-        renderHome();
-      }
-
-      function escapeHtml(text) {
-        var div = document.createElement('div');
-        div.textContent = text == null ? '' : String(text);
-        return div.innerHTML;
-      }
-
-      function confirmResetTeam() {
-        presentAlert('重設 ' + TEAM_META[activeTeamId].name, '會清除呢一組所有揭牌／地雷／bonus 紀錄。', [
-          { text: '取消', role: 'cancel' },
-          {
-            text: '重設',
-            role: 'destructive',
-            handler: function () {
-              var state = loadState();
-              state.teams[activeTeamId] = defaultTeam(activeTeamId);
-              saveState(state);
-              renderTeamPage();
-              presentToast('已重設呢一組', 1400, 'bottom', 'medium');
-            },
-          },
-        ]);
-      }
-
-      function confirmResetAll() {
-        presentAlert('重設全部組別', '會清除四組所有分數同操作紀錄，確定？', [
-          { text: '取消', role: 'cancel' },
-          {
-            text: '全部重設',
-            role: 'destructive',
-            handler: function () {
-              saveState(defaultState());
-              renderHome();
-              presentToast('已重設全部組別', 1400, 'bottom', 'medium');
-            },
-          },
-        ]);
-      }
-
-      function attachNavRefresh() {
-        var nav = document.querySelector('ion-nav');
-        if (!nav || nav.__mineNavHook) return;
-        nav.__mineNavHook = true;
-        nav.addEventListener('ionNavDidChange', function () {
-          if (typeof nav.getActive !== 'function') return;
-          nav
-            .getActive()
-            .then(function (active) {
-              var el = active;
-              if (el && typeof el === 'object' && el.el) el = el.el;
-              var tag = el && el.tagName ? el.tagName.toLowerCase() : '';
-              if (tag === 'page-home') renderHome();
-              if (tag === 'page-team') renderTeamPage();
-            })
-            .catch(function () {});
+        document.getElementById('team-grid').addEventListener('click', function (e) {
+          var btn = e.target.closest('[data-team]');
+          if (!btn) return;
+          openTeam(btn.getAttribute('data-team'));
         });
-      }
 
-      window.addEventListener('load', function () {
-        setTimeout(function () {
-          attachNavRefresh();
+        document.getElementById('btn-back').addEventListener('click', function () {
+          showScreen('home');
           renderHome();
-        }, 350);
-      });
+        });
+
+        document.getElementById('btn-visit').addEventListener('click', function () {
+          mutateActive(function (team) {
+            team.visits += 1;
+            pushHistory(team, '揭牌', -VISIT_COST);
+          }, '已記揭牌 −1,000');
+        });
+
+        document.getElementById('btn-mine-hit').addEventListener('click', function () {
+          mutateActive(function (team) {
+            team.visits += 1;
+            team.mines += 1;
+            pushHistory(team, '中地雷（揭牌+罰分）', -(VISIT_COST + MINE_COST));
+          }, '已記中地雷 −3,000');
+        });
+
+        document.getElementById('btn-mine-only').addEventListener('click', function () {
+          var state = loadState();
+          var team = state.teams[activeTeamId];
+          if (team.mines >= team.visits) {
+            toast('地雷次數唔可以多過揭牌次數', 'warn');
+            return;
+          }
+          mutateActive(function (t) {
+            t.mines += 1;
+            pushHistory(t, '地雷罰分', -MINE_COST);
+          }, '已加地雷罰分 −2,000', 'warn');
+        });
+
+        document.getElementById('bonus-toggle').addEventListener('change', function (e) {
+          var checked = !!e.target.checked;
+          var state = loadState();
+          if (state.teams[activeTeamId].bonus === checked) return;
+          mutateActive(function (team) {
+            team.bonus = checked;
+            pushHistory(team, checked ? '加上 Bonus' : '取消 Bonus', checked ? BONUS : -BONUS);
+          }, checked ? '已加 Bonus +50,000' : '已取消 Bonus');
+        });
+
+        document.querySelector('.chips').addEventListener('click', function (e) {
+          var btn = e.target.closest('[data-adjust]');
+          if (!btn) return;
+          var parts = btn.getAttribute('data-adjust').split(':');
+          var kind = parts[0];
+          var delta = Number(parts[1]);
+          mutateActive(function (team) {
+            if (kind === 'visits') {
+              var next = team.visits + delta;
+              if (next < 0) return false;
+              team.visits = next;
+              if (team.mines > team.visits) team.mines = team.visits;
+              pushHistory(team, delta > 0 ? '手動 +揭牌' : '手動 −揭牌', delta * -VISIT_COST);
+            } else {
+              var nextM = team.mines + delta;
+              if (nextM < 0) return false;
+              if (nextM > team.visits) {
+                toast('請先記揭牌，再加地雷', 'warn');
+                return false;
+              }
+              team.mines = nextM;
+              pushHistory(team, delta > 0 ? '手動 +地雷' : '手動 −地雷', delta * -MINE_COST);
+            }
+          });
+        });
+
+        document.getElementById('btn-undo').addEventListener('click', function () {
+          var state = loadState();
+          var team = state.teams[activeTeamId];
+          if (!team.history.length) {
+            toast('冇可以還原嘅操作', 'warn');
+            return;
+          }
+          var last = team.history[0];
+          mutateActive(function (t) {
+            t.history.shift();
+            if (last.label.indexOf('中地雷') === 0) {
+              t.visits = Math.max(0, t.visits - 1);
+              t.mines = Math.max(0, t.mines - 1);
+            } else if (last.label.indexOf('揭牌') === 0 || last.label.indexOf('手動 +揭牌') === 0) {
+              t.visits = Math.max(0, t.visits - 1);
+              if (t.mines > t.visits) t.mines = t.visits;
+            } else if (last.label.indexOf('手動 −揭牌') === 0) {
+              t.visits += 1;
+            } else if (last.label.indexOf('地雷') === 0 || last.label.indexOf('手動 +地雷') === 0) {
+              t.mines = Math.max(0, t.mines - 1);
+            } else if (last.label.indexOf('手動 −地雷') === 0) {
+              t.mines += 1;
+            } else if (last.label.indexOf('加上 Bonus') === 0) {
+              t.bonus = false;
+            } else if (last.label.indexOf('取消 Bonus') === 0) {
+              t.bonus = true;
+            }
+          }, '已還原：' + last.label, 'warn');
+        });
+
+        document.getElementById('btn-reset-team').addEventListener('click', function () {
+          showModal('重設 ' + TEAM_META[activeTeamId].name, '會清除呢一組所有揭牌／地雷／bonus 紀錄。', function () {
+            var state = loadState();
+            state.teams[activeTeamId] = defaultTeam(activeTeamId);
+            saveState(state);
+            renderTeam();
+            renderHome();
+            toast('已重設呢一組', 'warn');
+          });
+        });
+
+        document.getElementById('btn-reset-all').addEventListener('click', function () {
+          showModal('重設全部組別', '會清除四組所有分數同操作紀錄，確定？', function () {
+            saveState(defaultState());
+            renderHome();
+            toast('已重設全部組別', 'warn');
+          });
+        });
+
+        document.getElementById('modal-cancel').addEventListener('click', hideModal);
+        document.getElementById('modal-ok').addEventListener('click', function () {
+          var action = modalAction;
+          hideModal();
+          if (action) action();
+        });
+
+        if ('serviceWorker' in navigator) {
+          window.addEventListener('load', function () {
+            navigator.serviceWorker.register('./service-worker.js').catch(function () {});
+          });
+        }
+
+        renderHome();
+      })();
     </script>
   </body>
 </html>
