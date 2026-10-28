@@ -1,2 +1,38 @@
-const CACHE_NAME = "pwa-v1"; // Change this value to force the update of the service worker and cache.
-const APP_SHELL_FILES=["./","./index.html","./ionicinit.js","./manifest.json","./appicon.png"];self.addEventListener("install",e=>{e.waitUntil(caches.open(CACHE_NAME).then(e=>e.addAll(APP_SHELL_FILES))),self.skipWaiting()}),self.addEventListener("activate",e=>{e.waitUntil(caches.keys().then(e=>Promise.all(e.filter(e=>e!==CACHE_NAME).map(e=>caches.delete(e))))),self.clients.claim()}),self.addEventListener("fetch",e=>{"GET"===e.request.method&&e.respondWith(caches.match(e.request).then(t=>t||fetch(e.request).then(t=>{const n=t.clone();return caches.open(CACHE_NAME).then(t=>t.put(e.request,n)),t}).catch(()=>caches.match("./index.html"))))});
+const CACHE_NAME = "minefield-score-v1";
+const APP_SHELL_FILES = [
+  "./",
+  "./index.html",
+  "./ionicinit.min.js",
+  "./manifest.json",
+  "./appicon.png",
+];
+
+self.addEventListener("install", (e) => {
+  e.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL_FILES)));
+  self.skipWaiting();
+});
+
+self.addEventListener("activate", (e) => {
+  e.waitUntil(
+    caches.keys().then((keys) =>
+      Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key)))
+    )
+  );
+  self.clients.claim();
+});
+
+self.addEventListener("fetch", (e) => {
+  if (e.request.method !== "GET") return;
+  e.respondWith(
+    caches.match(e.request).then((cached) => {
+      if (cached) return cached;
+      return fetch(e.request)
+        .then((response) => {
+          const copy = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(e.request, copy));
+          return response;
+        })
+        .catch(() => caches.match("./index.html"));
+    })
+  );
+});

@@ -1,9 +1,9 @@
 {
-  "name": "BMI 計算器",
-  "short_name": "BMI",
-  "description": "使用 Ionic 建立的 BMI 計算與紀錄 PWA，資料儲存在裝置本機。",
+  "name": "Minefield 計分機",
+  "short_name": "地雷計分",
+  "description": "Minefield 四組即時計分：揭牌、地雷、Bonus，適合手機快速操作。",
   "lang": "zh-Hant",
-  "theme_color": "#3880ff",
+  "theme_color": "#1f3a5f",
   "background_color": "#ffffff",
   "display": "standalone",
   "orientation": "portrait",

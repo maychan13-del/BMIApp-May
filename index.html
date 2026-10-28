@@ -1,15 +1,5 @@
 <!--
-ionicinit.min.js 的功能與說明：
-push(name, title)：切換到目標頁，並回傳 Promise；約 100ms 後才 resolve，所以你可安全接 .then(...) 做「切頁後渲染」。
-presentAlert(header=null, message=null, buttons=null)：快速顯示 Ionic Alert；流程是建立元件 → 設定內容/按鈕 → 顯示 → 移除，避免殘留 DOM。
-presentActionSheet(header=null, subHeader=null, buttons=null)：給使用者一組操作選單（例如編輯/刪除/取消）；同樣會在關閉後清理元件。
-presentToast(message=null, duration=1800, position='bottom', color=null)：短暫提示訊息（成功、錯誤、已儲存等），支援時間、位置、顏色與按鈕。
-window.load 初始化段：動態載入 Ionic CDN 資源、建立 ion-app/ion-router/ion-nav、自動把所有 page-* 註冊成 route，最後呼叫 setUpIonic 完成啟動。
-
-ionicinit.min.js 的使用方式：
-1. 在 HTML 中使用 page-* 標籤定義頁面結構。
-2. 在 JavaScript 中使用 push('page-xxx') 切換頁面。
-3. 使用 presentAlert(...)、presentActionSheet(...)、presentToast(...) 顯示提示框。
+ionicinit.min.js：push / presentAlert / presentActionSheet / presentToast
 -->
 <!DOCTYPE html>
 <html lang="zh-Hant">
@@ -21,42 +11,214 @@ ionicinit.min.js 的使用方式：
     <meta name="HandheldFriendly" content="true" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-title" content="BMI 計算器" />
+    <meta name="apple-mobile-web-app-title" content="地雷計分" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-    <meta name="theme-color" content="#3880ff" />
-    <title>BMI 計算器</title>
+    <meta name="theme-color" content="#1f3a5f" />
+    <title>Minefield 計分機</title>
     <link rel="manifest" href="manifest.json" />
     <link rel="shortcut icon apple-touch-icon" href="appicon.png" />
     <script src="ionicinit.min.js"></script>
     <style>
       :root {
-        --ion-color-primary: #3880ff;
-        --ion-color-primary-rgb: 56, 128, 255;
+        --ion-color-primary: #1f3a5f;
+        --ion-color-primary-rgb: 31, 58, 95;
         --ion-color-primary-contrast: #ffffff;
         --ion-color-primary-contrast-rgb: 255, 255, 255;
-        --ion-color-primary-shade: #3171e0;
-        --ion-color-primary-tint: #4c8dff;
+        --ion-color-primary-shade: #1b3354;
+        --ion-color-primary-tint: #354e6f;
+        --team-a: #c62828;
+        --team-b: #2e7d32;
+        --team-c: #1565c0;
+        --team-d: #ef6c00;
+        --score-ink: #10233f;
       }
+
       .intro-text {
         color: var(--ion-color-medium);
-        font-size: 0.95rem;
-        line-height: 1.5;
-        margin: 0 0 12px;
+        font-size: 0.92rem;
+        line-height: 1.45;
+        margin: 0 0 14px;
       }
-      .stat-card ion-card-title {
-        font-size: 1rem;
+
+      .org-banner {
+        background: linear-gradient(135deg, #1f3a5f 0%, #355f8f 100%);
+        color: #fff;
+        border-radius: 16px;
+        padding: 16px 18px;
+        margin-bottom: 14px;
       }
-      .stat-card ion-card-subtitle {
+
+      .org-banner .label {
+        opacity: 0.85;
+        font-size: 0.85rem;
+      }
+
+      .org-banner .value {
+        font-size: 2rem;
+        font-weight: 700;
+        letter-spacing: 0.02em;
+        margin-top: 4px;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .team-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+      }
+
+      .team-tile {
+        border: 0;
+        border-radius: 16px;
+        padding: 14px 12px 12px;
+        text-align: left;
+        color: #fff;
+        min-height: 118px;
+        box-shadow: 0 8px 18px rgba(16, 35, 63, 0.16);
+        position: relative;
+        overflow: hidden;
+        -webkit-tap-highlight-color: transparent;
+      }
+
+      .team-tile::after {
+        content: '';
+        position: absolute;
+        right: -18px;
+        bottom: -28px;
+        width: 88px;
+        height: 88px;
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.12);
+      }
+
+      .team-tile .name {
+        font-size: 1.05rem;
+        font-weight: 700;
+      }
+
+      .team-tile .meta {
+        font-size: 0.78rem;
+        opacity: 0.9;
+        margin-top: 4px;
+      }
+
+      .team-tile .score {
+        margin-top: 14px;
+        font-size: 1.55rem;
+        font-weight: 800;
+        font-variant-numeric: tabular-nums;
+        letter-spacing: 0.01em;
+      }
+
+      .team-a { background: linear-gradient(160deg, #d32f2f, #b71c1c); }
+      .team-b { background: linear-gradient(160deg, #43a047, #1b5e20); }
+      .team-c { background: linear-gradient(160deg, #1e88e5, #0d47a1); }
+      .team-d { background: linear-gradient(160deg, #fb8c00, #e65100); }
+
+      .score-hero {
+        text-align: center;
+        padding: 8px 8px 4px;
+      }
+
+      .score-hero .eyebrow {
+        color: var(--ion-color-medium);
+        font-size: 0.85rem;
+      }
+
+      .score-hero .big {
+        color: var(--score-ink);
+        font-size: 2.6rem;
+        font-weight: 800;
+        line-height: 1.1;
+        margin: 6px 0 2px;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .score-hero .sub {
+        color: var(--ion-color-medium);
+        font-size: 0.92rem;
+      }
+
+      .stats-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr 1fr;
+        gap: 8px;
+        margin: 12px 0 16px;
+      }
+
+      .stat-box {
+        background: #f4f7fb;
+        border-radius: 12px;
+        padding: 10px 8px;
+        text-align: center;
+      }
+
+      .stat-box .k {
+        display: block;
+        color: var(--ion-color-medium);
+        font-size: 0.75rem;
+      }
+
+      .stat-box .v {
+        display: block;
+        margin-top: 4px;
+        font-size: 1.2rem;
+        font-weight: 700;
+        color: var(--score-ink);
+        font-variant-numeric: tabular-nums;
+      }
+
+      .action-stack ion-button {
+        margin-bottom: 10px;
+        height: 56px;
+        font-size: 1.05rem;
+        font-weight: 700;
+      }
+
+      .chip-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin: 4px 0 12px;
+      }
+
+      .history-item {
+        display: flex;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 10px 0;
+        border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+        font-size: 0.92rem;
+      }
+
+      .history-item:last-child {
+        border-bottom: 0;
+      }
+
+      .history-empty {
+        color: var(--ion-color-medium);
+        font-size: 0.9rem;
+        padding: 8px 0 4px;
+      }
+
+      .rule-note {
+        background: #f4f7fb;
+        border-radius: 12px;
+        padding: 12px 14px;
+        font-size: 0.88rem;
+        color: #445468;
+        line-height: 1.45;
         margin-top: 8px;
-        font-size: 1.35rem;
-        font-weight: 600;
       }
-      #records-empty {
-        padding: 32px 16px;
+
+      .rule-note strong {
+        color: var(--score-ink);
       }
-      #records-empty ion-icon {
-        margin-bottom: 12px;
-      }
+
+      .toolbar-team-a { --background: var(--team-a); --color: #fff; }
+      .toolbar-team-b { --background: var(--team-b); --color: #fff; }
+      .toolbar-team-c { --background: var(--team-c); --color: #fff; }
+      .toolbar-team-d { --background: var(--team-d); --color: #fff; }
     </style>
   </head>
 
@@ -64,128 +226,414 @@ ionicinit.min.js 的使用方式：
     <page-home>
       <ion-header>
         <ion-toolbar color="primary">
-          <ion-title>BMI 計算器</ion-title>
-        </ion-toolbar>
-      </ion-header>
-      <ion-content class="ion-padding">
-        <h1 class="ion-no-margin" style="font-size: 1.5rem;">健康體位小幫手</h1>
-        <p class="intro-text">輸入身高與體重即可計算 BMI，紀錄會保存在手機本機，方便隨時查看。</p>
-
-        <ion-grid class="ion-no-padding">
-          <ion-row>
-            <ion-col size="6">
-              <ion-card class="stat-card">
-                <ion-card-header>
-                  <ion-card-subtitle color="medium">紀錄總數</ion-card-subtitle>
-                  <ion-card-title id="home-record-count">0</ion-card-title>
-                </ion-card-header>
-              </ion-card>
-            </ion-col>
-            <ion-col size="6">
-              <ion-card class="stat-card">
-                <ion-card-header>
-                  <ion-card-subtitle color="medium">最新 BMI</ion-card-subtitle>
-                  <ion-card-title id="home-latest-bmi">—</ion-card-title>
-                  <ion-text color="medium"><p id="home-latest-meta" class="ion-no-margin" style="font-size: 0.85rem;">尚無紀錄</p></ion-text>
-                </ion-card-header>
-              </ion-card>
-            </ion-col>
-          </ion-row>
-        </ion-grid>
-
-        <ion-button expand="block" shape="round" color="primary" onclick="openCalculator();">
-          <ion-icon slot="start" name="calculator-outline"></ion-icon>
-          BMI 計算機
-        </ion-button>
-        <ion-button expand="block" shape="round" fill="outline" color="primary" onclick="openRecords();">
-          <ion-icon slot="start" name="list-outline"></ion-icon>
-          紀錄列表
-        </ion-button>
-      </ion-content>
-    </page-home>
-
-    <page-calculator>
-      <ion-header>
-        <ion-toolbar color="primary">
-          <ion-buttons slot="start">
-            <ion-back-button defaultHref="/"></ion-back-button>
-          </ion-buttons>
-          <ion-title>BMI 計算機</ion-title>
-        </ion-toolbar>
-      </ion-header>
-      <ion-content class="ion-padding">
-        <ion-list lines="full">
-          <ion-item>
-            <ion-label position="stacked">姓名</ion-label>
-            <ion-input id="calc-name" type="text" maxlength="40" placeholder="請輸入姓名"></ion-input>
-          </ion-item>
-          <ion-item>
-            <ion-label position="stacked">身高（公分）</ion-label>
-            <ion-input id="calc-height" inputmode="decimal" type="text" placeholder="例如 170"></ion-input>
-          </ion-item>
-          <ion-item>
-            <ion-label position="stacked">體重（公斤）</ion-label>
-            <ion-input id="calc-weight" inputmode="decimal" type="text" placeholder="例如 65"></ion-input>
-          </ion-item>
-        </ion-list>
-
-        <ion-button expand="block" shape="round" color="primary" onclick="calculateAndSave();">
-          <ion-icon slot="start" name="save-outline"></ion-icon>
-          計算並儲存
-        </ion-button>
-
-        <ion-card id="calc-result-card" style="display: none; margin-top: 16px;">
-          <ion-card-header>
-            <ion-card-subtitle>計算結果</ion-card-subtitle>
-            <ion-card-title id="calc-result-bmi"></ion-card-title>
-          </ion-card-header>
-          <ion-card-content>
-            <ion-chip id="calc-result-category" color="primary"></ion-chip>
-            <p id="calc-result-hint" class="ion-no-margin" style="margin-top: 8px; font-size: 0.9rem; color: var(--ion-color-medium);"></p>
-          </ion-card-content>
-        </ion-card>
-      </ion-content>
-    </page-calculator>
-
-    <page-records>
-      <ion-header>
-        <ion-toolbar color="primary">
-          <ion-buttons slot="start">
-            <ion-back-button defaultHref="/"></ion-back-button>
-          </ion-buttons>
-          <ion-title>紀錄列表</ion-title>
+          <ion-title>Minefield 計分機</ion-title>
           <ion-buttons slot="end">
-            <ion-button onclick="confirmClearAll();">
-              <ion-icon slot="icon-only" name="trash-outline"></ion-icon>
+            <ion-button onclick="confirmResetAll();">
+              <ion-icon slot="icon-only" name="refresh-outline"></ion-icon>
             </ion-button>
           </ion-buttons>
         </ion-toolbar>
       </ion-header>
       <ion-content class="ion-padding">
-        <div id="records-empty">
-          <ion-icon name="document-text-outline" color="medium" style="font-size: 64px;"></ion-icon>
-          <p><strong>尚無紀錄</strong></p>
-          <ion-text color="medium"><p>前往 BMI 計算機新增您的第一筆紀錄。</p></ion-text>
-          <ion-button expand="block" shape="round" fill="outline" style="margin-top: 16px;" onclick="openCalculator();">前往計算機</ion-button>
+        <div class="org-banner">
+          <div class="label">四組合計分數</div>
+          <div class="value" id="org-total">0</div>
         </div>
-        <div id="records-list"></div>
+
+        <p class="intro-text">點選組別，用大掣快速記揭牌／地雷。分數會即時更新，並儲存在呢部電話。</p>
+
+        <div class="team-grid" id="team-grid"></div>
+
+        <div class="rule-note">
+          <strong>計分規則</strong><br />
+          開局 62,000　·　揭牌 −1,000　·　地雷 −2,000　·　正確計劃 +50,000
+        </div>
       </ion-content>
-    </page-records>
+    </page-home>
+
+    <page-team>
+      <ion-header>
+        <ion-toolbar id="team-toolbar" class="toolbar-team-a">
+          <ion-buttons slot="start">
+            <ion-back-button defaultHref="/" text="返回"></ion-back-button>
+          </ion-buttons>
+          <ion-title id="team-title">組別 A</ion-title>
+          <ion-buttons slot="end">
+            <ion-button onclick="undoLast();">
+              <ion-icon slot="icon-only" name="arrow-undo-outline"></ion-icon>
+            </ion-button>
+          </ion-buttons>
+        </ion-toolbar>
+      </ion-header>
+      <ion-content class="ion-padding">
+        <div class="score-hero">
+          <div class="eyebrow">剩餘預算／分數</div>
+          <div class="big" id="team-score">62,000</div>
+          <div class="sub" id="team-final-hint">最終分數（含 bonus）：62,000</div>
+        </div>
+
+        <div class="stats-row">
+          <div class="stat-box">
+            <span class="k">揭牌次數</span>
+            <span class="v" id="stat-visits">0</span>
+          </div>
+          <div class="stat-box">
+            <span class="k">地雷次數</span>
+            <span class="v" id="stat-mines">0</span>
+          </div>
+          <div class="stat-box">
+            <span class="k">已扣成本</span>
+            <span class="v" id="stat-cost">0</span>
+          </div>
+        </div>
+
+        <div class="action-stack">
+          <ion-button expand="block" shape="round" color="primary" onclick="addVisit();">
+            <ion-icon slot="start" name="eye-outline"></ion-icon>
+            揭牌（−1,000）
+          </ion-button>
+          <ion-button expand="block" shape="round" color="warning" onclick="addMineHit();">
+            <ion-icon slot="start" name="alert-circle-outline"></ion-icon>
+            中地雷（揭牌+地雷 −3,000）
+          </ion-button>
+          <ion-button expand="block" shape="round" fill="outline" color="medium" onclick="addMineOnly();">
+            只加地雷罰分（−2,000）
+          </ion-button>
+        </div>
+
+        <ion-item lines="none" style="--background: #f4f7fb; border-radius: 12px; margin: 6px 0 14px;">
+          <ion-label>
+            <h2>正確計劃 Bonus</h2>
+            <p>+50,000（計劃完全正確先勾）</p>
+          </ion-label>
+          <ion-toggle id="bonus-toggle"></ion-toggle>
+        </ion-item>
+
+        <div class="chip-row">
+          <ion-chip outline="true" onclick="adjustVisits(-1);">揭牌 −1</ion-chip>
+          <ion-chip outline="true" onclick="adjustVisits(1);">揭牌 +1</ion-chip>
+          <ion-chip outline="true" onclick="adjustMines(-1);">地雷 −1</ion-chip>
+          <ion-chip outline="true" onclick="adjustMines(1);">地雷 +1</ion-chip>
+          <ion-chip color="danger" outline="true" onclick="confirmResetTeam();">重設呢一組</ion-chip>
+        </div>
+
+        <h3 style="margin: 8px 0 4px; font-size: 1rem;">最近操作</h3>
+        <div id="team-history"></div>
+      </ion-content>
+    </page-team>
 
     <script>
-      var STORAGE_KEY = 'bmi_pwa_records_v1';
+      var STORAGE_KEY = 'minefield_scores_v1';
+      var START_SCORE = 62000;
+      var VISIT_COST = 1000;
+      var MINE_COST = 2000;
+      var BONUS = 50000;
+      var TEAM_IDS = ['A', 'B', 'C', 'D'];
+      var TEAM_META = {
+        A: { name: '組別 A', className: 'team-a', toolbar: 'toolbar-team-a' },
+        B: { name: '組別 B', className: 'team-b', toolbar: 'toolbar-team-b' },
+        C: { name: '組別 C', className: 'team-c', toolbar: 'toolbar-team-c' },
+        D: { name: '組別 D', className: 'team-d', toolbar: 'toolbar-team-d' },
+      };
 
-      function loadRecords() {
+      var activeTeamId = 'A';
+
+      function defaultTeam(id) {
+        return {
+          id: id,
+          visits: 0,
+          mines: 0,
+          bonus: false,
+          history: [],
+        };
+      }
+
+      function defaultState() {
+        var teams = {};
+        for (var i = 0; i < TEAM_IDS.length; i++) {
+          teams[TEAM_IDS[i]] = defaultTeam(TEAM_IDS[i]);
+        }
+        return { teams: teams };
+      }
+
+      function loadState() {
         try {
           var raw = localStorage.getItem(STORAGE_KEY);
-          return raw ? JSON.parse(raw) : [];
+          if (!raw) return defaultState();
+          var parsed = JSON.parse(raw);
+          if (!parsed || !parsed.teams) return defaultState();
+          var state = defaultState();
+          for (var i = 0; i < TEAM_IDS.length; i++) {
+            var id = TEAM_IDS[i];
+            var t = parsed.teams[id] || {};
+            state.teams[id] = {
+              id: id,
+              visits: Math.max(0, Number(t.visits) || 0),
+              mines: Math.max(0, Number(t.mines) || 0),
+              bonus: !!t.bonus,
+              history: Array.isArray(t.history) ? t.history.slice(0, 40) : [],
+            };
+          }
+          return state;
         } catch (e) {
-          return [];
+          return defaultState();
         }
       }
 
-      function saveRecords(records) {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
+      function saveState(state) {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      }
+
+      function formatNum(n) {
+        return Number(n).toLocaleString('en-US');
+      }
+
+      function remainingBudget(team) {
+        return START_SCORE - team.visits * VISIT_COST - team.mines * MINE_COST;
+      }
+
+      function finalScore(team) {
+        return remainingBudget(team) + (team.bonus ? BONUS : 0);
+      }
+
+      function totalCost(team) {
+        return team.visits * VISIT_COST + team.mines * MINE_COST;
+      }
+
+      function pushHistory(team, label, delta) {
+        team.history.unshift({
+          label: label,
+          delta: delta,
+          ts: Date.now(),
+        });
+        if (team.history.length > 40) team.history.length = 40;
+      }
+
+      function mutateActive(mutator, toastMsg, toastColor) {
+        var state = loadState();
+        var team = state.teams[activeTeamId];
+        if (!team) return false;
+        var result = mutator(team);
+        if (result === false) return false;
+        if (team.mines > team.visits) team.mines = team.visits;
+        saveState(state);
+        renderTeamPage();
+        if (toastMsg) presentToast(toastMsg, 1200, 'bottom', toastColor || 'success');
+        return true;
+      }
+
+      function addVisit() {
+        mutateActive(function (team) {
+          team.visits += 1;
+          pushHistory(team, '揭牌', -VISIT_COST);
+        }, '已記揭牌 −1,000');
+      }
+
+      function addMineHit() {
+        mutateActive(function (team) {
+          team.visits += 1;
+          team.mines += 1;
+          pushHistory(team, '中地雷（揭牌+罰分）', -(VISIT_COST + MINE_COST));
+        }, '已記中地雷 −3,000');
+      }
+
+      function addMineOnly() {
+        var state = loadState();
+        var team = state.teams[activeTeamId];
+        if (!team) return;
+        if (team.mines >= team.visits) {
+          presentToast('地雷次數唔可以多過揭牌次數', 1800, 'bottom', 'warning');
+          return;
+        }
+        mutateActive(function (t) {
+          t.mines += 1;
+          pushHistory(t, '地雷罰分', -MINE_COST);
+        }, '已加地雷罰分 −2,000', 'warning');
+      }
+
+      function adjustVisits(delta) {
+        mutateActive(function (team) {
+          var next = team.visits + delta;
+          if (next < 0) return;
+          team.visits = next;
+          if (team.mines > team.visits) team.mines = team.visits;
+          pushHistory(team, delta > 0 ? '手動 +揭牌' : '手動 −揭牌', delta * -VISIT_COST);
+        });
+      }
+
+      function adjustMines(delta) {
+        mutateActive(function (team) {
+          var next = team.mines + delta;
+          if (next < 0) return;
+          if (next > team.visits) {
+            presentToast('請先記揭牌，再加地雷', 1600, 'bottom', 'warning');
+            return;
+          }
+          team.mines = next;
+          pushHistory(team, delta > 0 ? '手動 +地雷' : '手動 −地雷', delta * -MINE_COST);
+        });
+      }
+
+      function bindBonusToggle() {
+        var toggle = document.getElementById('bonus-toggle');
+        if (!toggle || toggle.__bound) return;
+        toggle.__bound = true;
+        toggle.addEventListener('ionChange', function (ev) {
+          var checked = !!(ev && ev.detail && ev.detail.checked);
+          var state = loadState();
+          var team = state.teams[activeTeamId];
+          if (!team || team.bonus === checked) return;
+          mutateActive(function (t) {
+            t.bonus = checked;
+            pushHistory(t, checked ? '加上 Bonus' : '取消 Bonus', checked ? BONUS : -BONUS);
+          }, checked ? '已加 Bonus +50,000' : '已取消 Bonus');
+        });
+      }
+
+      function undoLast() {
+        var state = loadState();
+        var team = state.teams[activeTeamId];
+        if (!team || !team.history.length) {
+          presentToast('冇可以還原嘅操作', 1400, 'bottom', 'medium');
+          return;
+        }
+        var last = team.history[0];
+        mutateActive(function (t) {
+          t.history.shift();
+          if (last.label.indexOf('中地雷') === 0) {
+            t.visits = Math.max(0, t.visits - 1);
+            t.mines = Math.max(0, t.mines - 1);
+          } else if (last.label.indexOf('揭牌') === 0 || last.label.indexOf('手動 +揭牌') === 0) {
+            t.visits = Math.max(0, t.visits - 1);
+            if (t.mines > t.visits) t.mines = t.visits;
+          } else if (last.label.indexOf('手動 −揭牌') === 0) {
+            t.visits += 1;
+          } else if (last.label.indexOf('地雷') === 0 || last.label.indexOf('手動 +地雷') === 0) {
+            t.mines = Math.max(0, t.mines - 1);
+          } else if (last.label.indexOf('手動 −地雷') === 0) {
+            t.mines += 1;
+          } else if (last.label.indexOf('加上 Bonus') === 0) {
+            t.bonus = false;
+          } else if (last.label.indexOf('取消 Bonus') === 0) {
+            t.bonus = true;
+          }
+        }, '已還原：' + last.label, 'medium');
+      }
+
+      function openTeam(id) {
+        activeTeamId = id;
+        push('page-team').then(function () {
+          bindBonusToggle();
+          renderTeamPage();
+        });
+      }
+
+      function renderHome() {
+        var state = loadState();
+        var grid = document.getElementById('team-grid');
+        var orgEl = document.getElementById('org-total');
+        if (!grid || !orgEl) return;
+
+        var org = 0;
+        var html = '';
+        for (var i = 0; i < TEAM_IDS.length; i++) {
+          var id = TEAM_IDS[i];
+          var team = state.teams[id];
+          var final = finalScore(team);
+          org += final;
+          var meta = TEAM_META[id];
+          html +=
+            '<button type="button" class="team-tile ' +
+            meta.className +
+            '" onclick="openTeam(\'' +
+            id +
+            '\')">' +
+            '<div class="name">' +
+            meta.name +
+            '</div>' +
+            '<div class="meta">揭牌 ' +
+            team.visits +
+            ' · 地雷 ' +
+            team.mines +
+            (team.bonus ? ' · Bonus' : '') +
+            '</div>' +
+            '<div class="score">' +
+            formatNum(final) +
+            '</div>' +
+            '</button>';
+        }
+        grid.innerHTML = html;
+        orgEl.textContent = formatNum(org);
+      }
+
+      function renderTeamPage() {
+        var state = loadState();
+        var team = state.teams[activeTeamId];
+        var meta = TEAM_META[activeTeamId];
+        if (!team || !meta) return;
+
+        var toolbar = document.getElementById('team-toolbar');
+        var title = document.getElementById('team-title');
+        if (toolbar) {
+          toolbar.className = meta.toolbar;
+        }
+        if (title) title.textContent = meta.name;
+
+        var remain = remainingBudget(team);
+        var final = finalScore(team);
+        var scoreEl = document.getElementById('team-score');
+        var hintEl = document.getElementById('team-final-hint');
+        var visitsEl = document.getElementById('stat-visits');
+        var minesEl = document.getElementById('stat-mines');
+        var costEl = document.getElementById('stat-cost');
+        var toggle = document.getElementById('bonus-toggle');
+        var historyEl = document.getElementById('team-history');
+
+        if (scoreEl) scoreEl.textContent = formatNum(remain);
+        if (hintEl) {
+          hintEl.textContent =
+            '最終分數（含 bonus）：' +
+            formatNum(final) +
+            (team.bonus ? '（已加 50,000）' : '（未加 bonus）');
+        }
+        if (visitsEl) visitsEl.textContent = String(team.visits);
+        if (minesEl) minesEl.textContent = String(team.mines);
+        if (costEl) costEl.textContent = formatNum(totalCost(team));
+        if (toggle && toggle.checked !== team.bonus) {
+          toggle.checked = team.bonus;
+        }
+
+        if (historyEl) {
+          if (!team.history.length) {
+            historyEl.innerHTML = '<div class="history-empty">暫時未有操作紀錄。</div>';
+          } else {
+            var h = '';
+            for (var i = 0; i < Math.min(team.history.length, 12); i++) {
+              var item = team.history[i];
+              var time = '';
+              try {
+                time = new Date(item.ts).toLocaleTimeString('zh-HK', {
+                  hour: '2-digit',
+                  minute: '2-digit',
+                  second: '2-digit',
+                });
+              } catch (e) {}
+              var deltaText =
+                (item.delta > 0 ? '+' : '') + formatNum(item.delta);
+              h +=
+                '<div class="history-item"><span>' +
+                time +
+                ' · ' +
+                escapeHtml(item.label) +
+                '</span><strong>' +
+                deltaText +
+                '</strong></div>';
+            }
+            historyEl.innerHTML = h;
+          }
+        }
+
+        renderHome();
       }
 
       function escapeHtml(text) {
@@ -194,232 +642,44 @@ ionicinit.min.js 的使用方式：
         return div.innerHTML;
       }
 
-      function parsePositiveNumber(value) {
-        var n = parseFloat(String(value).replace(/,/g, '').trim());
-        return Number.isFinite(n) && n > 0 ? n : NaN;
-      }
-
-      function computeBMI(heightCm, weightKg) {
-        var m = heightCm / 100;
-        return weightKg / (m * m);
-      }
-
-      function categoryFromBMI(bmi) {
-        if (bmi < 18.5) return '過輕';
-        if (bmi <= 23.9) return '正常';
-        if (bmi <= 26.9) return '過重';
-        if (bmi <= 29.9) return '輕度肥胖';
-        if (bmi <= 34.9) return '中度肥胖';
-        return '重度肥胖';
-      }
-
-      function chipColorForCategory(cat) {
-        switch (cat) {
-          case '過輕':
-            return 'tertiary';
-          case '正常':
-            return 'success';
-          case '過重':
-            return 'warning';
-          case '輕度肥胖':
-          case '中度肥胖':
-            return 'danger';
-          default:
-            return 'danger';
-        }
-      }
-
-      function renderHome() {
-        var records = loadRecords();
-        var countEl = document.getElementById('home-record-count');
-        var bmiEl = document.getElementById('home-latest-bmi');
-        var metaEl = document.getElementById('home-latest-meta');
-        if (!countEl || !bmiEl || !metaEl) return;
-
-        countEl.textContent = String(records.length);
-
-        if (records.length === 0) {
-          bmiEl.textContent = '—';
-          metaEl.textContent = '尚無紀錄';
-          return;
-        }
-
-        var latest = records[0];
-        bmiEl.textContent = typeof latest.bmi === 'number' ? latest.bmi.toFixed(1) : String(latest.bmi);
-        metaEl.textContent =
-          (latest.name ? latest.name + ' · ' : '') + (latest.category || '');
-      }
-
-      function resetCalculatorView() {
-        var card = document.getElementById('calc-result-card');
-        if (card) card.style.display = 'none';
-      }
-
-      function openCalculator() {
-        push('page-calculator').then(function () {
-          resetCalculatorView();
-        });
-      }
-
-      function openRecords() {
-        push('page-records').then(function () {
-          renderRecords();
-        });
-      }
-
-      async function calculateAndSave() {
-        var nameEl = document.getElementById('calc-name');
-        var heightEl = document.getElementById('calc-height');
-        var weightEl = document.getElementById('calc-weight');
-        var name = nameEl ? String(nameEl.value || '').trim() : '';
-        var heightCm = heightEl ? parsePositiveNumber(heightEl.value) : NaN;
-        var weightKg = weightEl ? parsePositiveNumber(weightEl.value) : NaN;
-
-        if (!name) {
-          await presentToast('請輸入姓名', 2000, 'bottom', 'warning');
-          return;
-        }
-        if (!Number.isFinite(heightCm)) {
-          await presentToast('請輸入有效的身高（公分）', 2000, 'bottom', 'warning');
-          return;
-        }
-        if (heightCm < 50 || heightCm > 280) {
-          await presentToast('身高請介於 50～280 公分', 2000, 'bottom', 'warning');
-          return;
-        }
-        if (!Number.isFinite(weightKg)) {
-          await presentToast('請輸入有效的體重（公斤）', 2000, 'bottom', 'warning');
-          return;
-        }
-        if (weightKg < 15 || weightKg > 500) {
-          await presentToast('體重請介於 15～500 公斤', 2000, 'bottom', 'warning');
-          return;
-        }
-
-        var bmi = computeBMI(heightCm, weightKg);
-        var category = categoryFromBMI(bmi);
-        var record = {
-          name: name,
-          heightCm: Math.round(heightCm * 10) / 10,
-          weightKg: Math.round(weightKg * 10) / 10,
-          bmi: Math.round(bmi * 10) / 10,
-          category: category,
-          ts: Date.now(),
-        };
-
-        var records = loadRecords();
-        records.unshift(record);
-        saveRecords(records);
-
-        var card = document.getElementById('calc-result-card');
-        var titleEl = document.getElementById('calc-result-bmi');
-        var chipEl = document.getElementById('calc-result-category');
-        var hintEl = document.getElementById('calc-result-hint');
-
-        if (card && titleEl && chipEl && hintEl) {
-          card.style.display = 'block';
-          titleEl.textContent = 'BMI ' + record.bmi.toFixed(1);
-          chipEl.textContent = category;
-          chipEl.setAttribute('color', chipColorForCategory(category));
-          hintEl.textContent =
-            '身高 ' +
-            record.heightCm +
-            ' cm · 體重 ' +
-            record.weightKg +
-            ' kg（依衛福部成人 BMI 分級）';
-        }
-
-        renderHome();
-        await presentToast('已儲存紀錄', 1800, 'bottom', 'success');
-      }
-
-      function renderRecords() {
-        var records = loadRecords();
-        var listEl = document.getElementById('records-list');
-        var emptyEl = document.getElementById('records-empty');
-        if (!listEl || !emptyEl) return;
-
-        if (records.length === 0) {
-          emptyEl.style.display = 'block';
-          listEl.innerHTML = '';
-          return;
-        }
-
-        emptyEl.style.display = 'none';
-        var html = '';
-        for (var i = 0; i < records.length; i++) {
-          var r = records[i];
-          var dateStr = '';
-          try {
-            dateStr = new Date(r.ts).toLocaleString('zh-TW');
-          } catch (e) {
-            dateStr = '';
-          }
-          var chipColor = chipColorForCategory(r.category);
-          html +=
-            '<ion-card>' +
-            '<ion-card-header>' +
-            '<ion-card-subtitle>' +
-            escapeHtml(dateStr) +
-            '</ion-card-subtitle>' +
-            '<ion-card-title>' +
-            escapeHtml(r.name) +
-            '</ion-card-title>' +
-            '</ion-card-header>' +
-            '<ion-card-content>' +
-            '<p class="ion-no-margin"><strong>BMI</strong> ' +
-            escapeHtml(String(typeof r.bmi === 'number' ? r.bmi.toFixed(1) : r.bmi)) +
-            '</p>' +
-            '<ion-chip color="' +
-            escapeHtml(chipColor) +
-            '" style="margin-top:8px;">' +
-            escapeHtml(r.category || '') +
-            '</ion-chip>' +
-            '<p style="margin-top:12px;font-size:0.9rem;color:var(--ion-color-medium);" class="ion-no-margin">' +
-            '身高 ' +
-            escapeHtml(String(r.heightCm)) +
-            ' cm · 體重 ' +
-            escapeHtml(String(r.weightKg)) +
-            ' kg' +
-            '</p>' +
-            '</ion-card-content>' +
-            '</ion-card>';
-        }
-        listEl.innerHTML = html;
-      }
-
-      function confirmClearAll() {
-        var records = loadRecords();
-        if (records.length === 0) {
-          presentToast('目前沒有任何紀錄', 1800, 'bottom', 'medium');
-          return;
-        }
-
-        presentAlert(
-          '清除全部紀錄',
-          '確定要刪除所有 BMI 紀錄嗎？此操作無法復原。',
-          [
-            { text: '取消', role: 'cancel' },
-            {
-              text: '全部清除',
-              role: 'destructive',
-              handler: function () {
-                localStorage.removeItem(STORAGE_KEY);
-                renderRecords();
-                renderHome();
-                presentToast('已清除全部紀錄', 1800, 'bottom', 'medium');
-              },
+      function confirmResetTeam() {
+        presentAlert('重設 ' + TEAM_META[activeTeamId].name, '會清除呢一組所有揭牌／地雷／bonus 紀錄。', [
+          { text: '取消', role: 'cancel' },
+          {
+            text: '重設',
+            role: 'destructive',
+            handler: function () {
+              var state = loadState();
+              state.teams[activeTeamId] = defaultTeam(activeTeamId);
+              saveState(state);
+              renderTeamPage();
+              presentToast('已重設呢一組', 1400, 'bottom', 'medium');
             },
-          ]
-        );
+          },
+        ]);
+      }
+
+      function confirmResetAll() {
+        presentAlert('重設全部組別', '會清除四組所有分數同操作紀錄，確定？', [
+          { text: '取消', role: 'cancel' },
+          {
+            text: '全部重設',
+            role: 'destructive',
+            handler: function () {
+              saveState(defaultState());
+              renderHome();
+              presentToast('已重設全部組別', 1400, 'bottom', 'medium');
+            },
+          },
+        ]);
       }
 
       function attachNavRefresh() {
         var nav = document.querySelector('ion-nav');
-        if (!nav || nav.__bmiNavHook) return;
-        nav.__bmiNavHook = true;
-        if (typeof nav.getActive !== 'function') return;
+        if (!nav || nav.__mineNavHook) return;
+        nav.__mineNavHook = true;
         nav.addEventListener('ionNavDidChange', function () {
+          if (typeof nav.getActive !== 'function') return;
           nav
             .getActive()
             .then(function (active) {
@@ -427,7 +687,7 @@ ionicinit.min.js 的使用方式：
               if (el && typeof el === 'object' && el.el) el = el.el;
               var tag = el && el.tagName ? el.tagName.toLowerCase() : '';
               if (tag === 'page-home') renderHome();
-              if (tag === 'page-records') renderRecords();
+              if (tag === 'page-team') renderTeamPage();
             })
             .catch(function () {});
         });
