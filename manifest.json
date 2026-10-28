@@ -1,8 +1,8 @@
 {
-  "name": "Minefield 計分機",
-  "short_name": "地雷計分",
-  "description": "Minefield 四組即時計分：揭牌、地雷、Bonus，適合手機快速操作。",
-  "lang": "zh-Hant",
+  "name": "Minefield Scorekeeper",
+  "short_name": "Minefield",
+  "description": "Fast mobile scoring for Minefield teams: visits, mines, and completion bonus.",
+  "lang": "en",
   "theme_color": "#1f3a5f",
   "background_color": "#ffffff",
   "display": "standalone",
