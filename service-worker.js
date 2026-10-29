@@ -1,4 +1,4 @@
-const CACHE_NAME = "minefield-score-v3";
+const CACHE_NAME = "minefield-score-v4";
 const APP_SHELL_FILES = ["./", "./index.html", "./manifest.json", "./appicon.png"];
 
 self.addEventListener("install", (e) => {

@@ -40,6 +40,77 @@
       .screen { display: none; min-height: 100dvh; padding-bottom: calc(20px + var(--safe-bottom)); }
       .screen.active { display: block; }
 
+      .timer-bar {
+        position: sticky;
+        top: 0;
+        z-index: 20;
+        padding: calc(10px + var(--safe-top)) 14px 12px;
+        background: linear-gradient(135deg, #10233f, #2a4d73);
+        color: #fff;
+      }
+      .timer-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+      }
+      .timer-display {
+        font-size: 2rem;
+        font-weight: 800;
+        letter-spacing: 0.04em;
+        font-variant-numeric: tabular-nums;
+        min-width: 5.2em;
+      }
+      .timer-display.warn { color: #ffd54f; }
+      .timer-display.done { color: #ff8a80; }
+      .timer-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        justify-content: flex-end;
+      }
+      .timer-btn {
+        border: 0;
+        border-radius: 12px;
+        min-height: 42px;
+        padding: 8px 14px;
+        font-weight: 700;
+        cursor: pointer;
+        color: #10233f;
+        background: #fff;
+      }
+      .timer-btn:disabled {
+        opacity: 0.45;
+        cursor: default;
+      }
+      .timer-btn.pause { background: #ffe082; }
+      .timer-btn.stop { background: #ffcdd2; }
+      .timer-meta {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        margin-top: 8px;
+        font-size: 0.82rem;
+        opacity: 0.92;
+      }
+      .sync-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 10px;
+        border-radius: 999px;
+        background: rgba(255,255,255,0.14);
+      }
+      .sync-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #ffd54f;
+      }
+      .sync-pill.live .sync-dot { background: #69f0ae; }
+      .sync-pill.off .sync-dot { background: #ff8a80; }
+
       .topbar {
         position: sticky;
         top: 0;
@@ -48,10 +119,11 @@
         align-items: center;
         gap: 8px;
         min-height: 56px;
-        padding: calc(10px + var(--safe-top)) 14px 10px;
+        padding: 10px 14px;
         background: var(--primary);
         color: #fff;
       }
+      #screen-home .topbar { top: auto; position: relative; }
       .topbar.team-a { background: var(--team-a); }
       .topbar.team-b { background: var(--team-b); }
       .topbar.team-c { background: var(--team-c); }
@@ -344,6 +416,21 @@
     </style>
   </head>
   <body>
+    <div class="timer-bar">
+      <div class="timer-row">
+        <div class="timer-display" id="timer-display">40:00</div>
+        <div class="timer-actions">
+          <button class="timer-btn" type="button" id="btn-timer-start">Start</button>
+          <button class="timer-btn pause" type="button" id="btn-timer-pause" disabled>Pause</button>
+          <button class="timer-btn stop" type="button" id="btn-timer-stop" disabled>Stop</button>
+        </div>
+      </div>
+      <div class="timer-meta">
+        <span>40-minute activity timer</span>
+        <span class="sync-pill" id="sync-status"><span class="sync-dot"></span><span id="sync-label">Connecting…</span></span>
+      </div>
+    </div>
+
     <section id="screen-home" class="screen active">
       <div class="topbar">
         <h1>Minefield Scorekeeper</h1>
@@ -354,7 +441,7 @@
           <div class="label">Organisation total</div>
           <div class="value" id="org-total">0</div>
         </div>
-        <p class="hint">Tap a team, then use the big buttons to log visits and mines. Scores update instantly and stay on this phone.</p>
+        <p class="hint">Tap a team, then use the big buttons to log visits and mines. Scores and the timer sync live across devices on this same link.</p>
         <div class="grid" id="team-grid"></div>
         <div class="rules">
           <strong>Scoring rules</strong><br />
@@ -424,326 +511,552 @@
       </div>
     </div>
 
-    <script>
-      (function () {
-        var STORAGE_KEY = 'minefield_scores_v1';
-        var START_SCORE = 62000;
-        var VISIT_COST = 1000;
-        var MINE_COST = 2000;
-        var BONUS = 50000;
-        var TEAM_IDS = ['A', 'B', 'C', 'D'];
-        var TEAM_META = {
-          A: { name: 'Team A', className: 'a' },
-          B: { name: 'Team B', className: 'b' },
-          C: { name: 'Team C', className: 'c' },
-          D: { name: 'Team D', className: 'd' },
+    <script type="module">
+      import { connect } from 'https://cdn.jsdelivr.net/npm/itty-sockets@0.9.3/connect.mjs';
+
+      const STORAGE_KEY = 'minefield_scores_v2';
+      const START_SCORE = 62000;
+      const VISIT_COST = 1000;
+      const MINE_COST = 2000;
+      const BONUS = 50000;
+      const TIMER_MS = 40 * 60 * 1000;
+      const TEAM_IDS = ['A', 'B', 'C', 'D'];
+      const TEAM_META = {
+        A: { name: 'Team A', className: 'a' },
+        B: { name: 'Team B', className: 'b' },
+        C: { name: 'Team C', className: 'c' },
+        D: { name: 'Team D', className: 'd' },
+      };
+      const SYNC_CHANNEL = 'minefield-score-spc_0816a62362394a878d943d9122492b3d';
+
+      let activeTeamId = 'A';
+      let modalAction = null;
+      let toastTimer = null;
+      let tickTimer = null;
+      let broadcastTimer = null;
+      let applyingRemote = false;
+      let syncConnected = false;
+      let socket = null;
+
+      const clientId =
+        sessionStorage.getItem('minefield_client_id') ||
+        (() => {
+          const id = 'c_' + Math.random().toString(36).slice(2) + Date.now().toString(36);
+          sessionStorage.setItem('minefield_client_id', id);
+          return id;
+        })();
+
+      function defaultTeam(id) {
+        return { id, visits: 0, mines: 0, bonus: false, history: [] };
+      }
+
+      function defaultTimer() {
+        return {
+          status: 'idle',
+          durationMs: TIMER_MS,
+          remainingMs: TIMER_MS,
+          endsAt: null,
         };
+      }
 
-        var activeTeamId = 'A';
-        var modalAction = null;
-        var toastTimer = null;
+      function defaultState() {
+        const teams = {};
+        TEAM_IDS.forEach((id) => {
+          teams[id] = defaultTeam(id);
+        });
+        return {
+          version: 1,
+          updatedAt: Date.now(),
+          updatedBy: clientId,
+          teams,
+          timer: defaultTimer(),
+        };
+      }
 
-        function defaultTeam(id) {
-          return { id: id, visits: 0, mines: 0, bonus: false, history: [] };
+      function normalizeState(raw) {
+        const state = defaultState();
+        if (!raw || typeof raw !== 'object') return state;
+        state.updatedAt = Number(raw.updatedAt) || Date.now();
+        state.updatedBy = raw.updatedBy || '';
+        TEAM_IDS.forEach((id) => {
+          const t = (raw.teams && raw.teams[id]) || {};
+          state.teams[id] = {
+            id,
+            visits: Math.max(0, Number(t.visits) || 0),
+            mines: Math.max(0, Number(t.mines) || 0),
+            bonus: !!t.bonus,
+            history: Array.isArray(t.history) ? t.history.slice(0, 40) : [],
+          };
+          if (state.teams[id].mines > state.teams[id].visits) {
+            state.teams[id].mines = state.teams[id].visits;
+          }
+        });
+        const timer = raw.timer || {};
+        state.timer = {
+          status: ['idle', 'running', 'paused'].includes(timer.status) ? timer.status : 'idle',
+          durationMs: TIMER_MS,
+          remainingMs: Math.max(0, Math.min(TIMER_MS, Number(timer.remainingMs) || TIMER_MS)),
+          endsAt: timer.endsAt == null ? null : Number(timer.endsAt),
+        };
+        if (state.timer.status === 'running' && !state.timer.endsAt) {
+          state.timer.endsAt = Date.now() + state.timer.remainingMs;
         }
+        if (state.timer.status !== 'running') state.timer.endsAt = null;
+        return state;
+      }
 
-        function defaultState() {
-          var teams = {};
-          TEAM_IDS.forEach(function (id) { teams[id] = defaultTeam(id); });
-          return { teams: teams };
+      function loadState() {
+        try {
+          const raw = localStorage.getItem(STORAGE_KEY);
+          if (!raw) return defaultState();
+          return normalizeState(JSON.parse(raw));
+        } catch (e) {
+          return defaultState();
         }
+      }
 
-        function loadState() {
-          try {
-            var raw = localStorage.getItem(STORAGE_KEY);
-            if (!raw) return defaultState();
-            var parsed = JSON.parse(raw);
-            var state = defaultState();
-            TEAM_IDS.forEach(function (id) {
-              var t = (parsed.teams && parsed.teams[id]) || {};
-              state.teams[id] = {
-                id: id,
-                visits: Math.max(0, Number(t.visits) || 0),
-                mines: Math.max(0, Number(t.mines) || 0),
-                bonus: !!t.bonus,
-                history: Array.isArray(t.history) ? t.history.slice(0, 40) : [],
-              };
-              if (state.teams[id].mines > state.teams[id].visits) {
-                state.teams[id].mines = state.teams[id].visits;
+      function saveState(state, { broadcast = true } = {}) {
+        state.updatedAt = Date.now();
+        state.updatedBy = clientId;
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+        if (broadcast && !applyingRemote) scheduleBroadcast(state);
+      }
+
+      function formatNum(n) {
+        return Number(n).toLocaleString('en-US');
+      }
+
+      function remainingBudget(team) {
+        return START_SCORE - team.visits * VISIT_COST - team.mines * MINE_COST;
+      }
+
+      function finalScore(team) {
+        return remainingBudget(team) + (team.bonus ? BONUS : 0);
+      }
+
+      function totalCost(team) {
+        return team.visits * VISIT_COST + team.mines * MINE_COST;
+      }
+
+      function pushHistory(team, label, delta) {
+        team.history.unshift({ label, delta, ts: Date.now() });
+        if (team.history.length > 40) team.history.length = 40;
+      }
+
+      function toast(msg, kind) {
+        const el = document.getElementById('toast');
+        el.textContent = msg;
+        el.className = 'toast show' + (kind ? ' ' + kind : '');
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => {
+          el.className = 'toast';
+        }, 1400);
+      }
+
+      function showModal(title, msg, onOk) {
+        document.getElementById('modal-title').textContent = title;
+        document.getElementById('modal-msg').textContent = msg;
+        modalAction = onOk;
+        document.getElementById('modal').classList.add('show');
+      }
+
+      function hideModal() {
+        modalAction = null;
+        document.getElementById('modal').classList.remove('show');
+      }
+
+      function showScreen(name) {
+        document.getElementById('screen-home').classList.toggle('active', name === 'home');
+        document.getElementById('screen-team').classList.toggle('active', name === 'team');
+        window.scrollTo(0, 0);
+      }
+
+      function setSyncStatus(kind, label) {
+        const pill = document.getElementById('sync-status');
+        const text = document.getElementById('sync-label');
+        pill.className = 'sync-pill ' + kind;
+        text.textContent = label;
+      }
+
+      function scheduleBroadcast(state) {
+        clearTimeout(broadcastTimer);
+        broadcastTimer = setTimeout(() => {
+          if (!socket || !syncConnected) return;
+          socket.send({
+            type: 'state',
+            clientId,
+            updatedAt: state.updatedAt,
+            payload: state,
+          });
+        }, 120);
+      }
+
+      function applyRemoteState(remote) {
+        const local = loadState();
+        const next = normalizeState(remote);
+        if (next.updatedAt < local.updatedAt) return false;
+        if (next.updatedAt === local.updatedAt && next.updatedBy === local.updatedBy) return false;
+        applyingRemote = true;
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+        applyingRemote = false;
+        renderAll();
+        return true;
+      }
+
+      function mutateActive(mutator, msg, kind) {
+        const state = loadState();
+        const team = state.teams[activeTeamId];
+        if (!team) return;
+        if (mutator(team) === false) return;
+        if (team.mines > team.visits) team.mines = team.visits;
+        saveState(state);
+        renderAll();
+        if (msg) toast(msg, kind || 'ok');
+      }
+
+      function getTimerRemaining(timer, now = Date.now()) {
+        if (timer.status === 'running' && timer.endsAt) {
+          return Math.max(0, timer.endsAt - now);
+        }
+        return Math.max(0, timer.remainingMs || 0);
+      }
+
+      function formatTimer(ms) {
+        const total = Math.ceil(ms / 1000);
+        const m = Math.floor(total / 60);
+        const s = total % 60;
+        return String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
+      }
+
+      function updateTimerButtons(timer) {
+        const start = document.getElementById('btn-timer-start');
+        const pause = document.getElementById('btn-timer-pause');
+        const stop = document.getElementById('btn-timer-stop');
+        start.disabled = timer.status === 'running';
+        pause.disabled = timer.status !== 'running';
+        stop.disabled = timer.status === 'idle' && getTimerRemaining(timer) === TIMER_MS;
+        start.textContent = timer.status === 'paused' ? 'Resume' : 'Start';
+      }
+
+      function renderTimer() {
+        const state = loadState();
+        const remaining = getTimerRemaining(state.timer);
+        const display = document.getElementById('timer-display');
+        display.textContent = formatTimer(remaining);
+        display.className = 'timer-display';
+        if (state.timer.status === 'running' && remaining <= 5 * 60 * 1000) display.classList.add('warn');
+        if (remaining === 0 && state.timer.status !== 'idle') display.classList.add('done');
+        updateTimerButtons(state.timer);
+
+        if (state.timer.status === 'running' && remaining === 0) {
+          state.timer.status = 'paused';
+          state.timer.remainingMs = 0;
+          state.timer.endsAt = null;
+          saveState(state);
+          updateTimerButtons(state.timer);
+          toast('Time is up', 'warn');
+        }
+      }
+
+      function ensureTicker() {
+        clearInterval(tickTimer);
+        tickTimer = setInterval(renderTimer, 250);
+      }
+
+      function startTimer() {
+        const state = loadState();
+        let remaining = getTimerRemaining(state.timer);
+        if (remaining <= 0) remaining = TIMER_MS;
+        const resumed = state.timer.status === 'paused';
+        state.timer.status = 'running';
+        state.timer.remainingMs = remaining;
+        state.timer.endsAt = Date.now() + remaining;
+        saveState(state);
+        renderTimer();
+        toast(resumed ? 'Timer resumed' : 'Timer started');
+      }
+
+      function pauseTimer() {
+        const state = loadState();
+        if (state.timer.status !== 'running') return;
+        state.timer.remainingMs = getTimerRemaining(state.timer);
+        state.timer.status = 'paused';
+        state.timer.endsAt = null;
+        saveState(state);
+        renderTimer();
+        toast('Timer paused', 'warn');
+      }
+
+      function stopTimer() {
+        const state = loadState();
+        state.timer = defaultTimer();
+        saveState(state);
+        renderTimer();
+        toast('Timer stopped', 'warn');
+      }
+
+      function openTeam(id) {
+        activeTeamId = id;
+        showScreen('team');
+        renderTeam();
+      }
+
+      function renderHome() {
+        const state = loadState();
+        const grid = document.getElementById('team-grid');
+        let org = 0;
+        let html = '';
+        TEAM_IDS.forEach((id) => {
+          const team = state.teams[id];
+          const final = finalScore(team);
+          org += final;
+          const meta = TEAM_META[id];
+          html +=
+            '<button type="button" class="tile ' + meta.className + '" data-team="' + id + '">' +
+            '<div class="name">' + meta.name + '</div>' +
+            '<div class="meta">Visits ' + team.visits + ' · Mines ' + team.mines + (team.bonus ? ' · Bonus' : '') + '</div>' +
+            '<div class="score">' + formatNum(final) + '</div>' +
+            '</button>';
+        });
+        grid.innerHTML = html;
+        document.getElementById('org-total').textContent = formatNum(org);
+      }
+
+      function renderTeam() {
+        const state = loadState();
+        const team = state.teams[activeTeamId];
+        const meta = TEAM_META[activeTeamId];
+        if (!team || !meta) return;
+        const remain = remainingBudget(team);
+        const final = finalScore(team);
+
+        document.getElementById('team-topbar').className = 'topbar team-' + meta.className;
+        document.getElementById('team-title').textContent = meta.name;
+        document.getElementById('team-score').textContent = formatNum(remain);
+        document.getElementById('team-final-hint').textContent =
+          'Final score (with bonus): ' + formatNum(final) + (team.bonus ? ' (bonus applied)' : ' (no bonus)');
+        document.getElementById('stat-visits').textContent = String(team.visits);
+        document.getElementById('stat-mines').textContent = String(team.mines);
+        document.getElementById('stat-cost').textContent = formatNum(totalCost(team));
+
+        const toggle = document.getElementById('bonus-toggle');
+        if (toggle.checked !== team.bonus) toggle.checked = team.bonus;
+
+        const historyEl = document.getElementById('team-history');
+        if (!team.history.length) {
+          historyEl.innerHTML = '<div class="history-empty">No actions yet.</div>';
+        } else {
+          historyEl.innerHTML = team.history.slice(0, 12).map((item) => {
+            const time = new Date(item.ts).toLocaleTimeString('en-GB', {
+              hour: '2-digit', minute: '2-digit', second: '2-digit'
+            });
+            const delta = (item.delta > 0 ? '+' : '') + formatNum(item.delta);
+            return '<div class="history-item"><span>' + time + ' · ' + item.label +
+              '</span><strong>' + delta + '</strong></div>';
+          }).join('');
+        }
+      }
+
+      function renderAll() {
+        renderHome();
+        if (document.getElementById('screen-team').classList.contains('active')) {
+          renderTeam();
+        }
+        renderTimer();
+      }
+
+      function setupSync() {
+        setSyncStatus('', 'Connecting…');
+        try {
+          socket = connect(SYNC_CHANNEL, { as: clientId });
+          socket
+            .on('open', () => {
+              syncConnected = true;
+              setSyncStatus('live', 'Live sync');
+              socket.send({ type: 'hello', clientId, updatedAt: loadState().updatedAt });
+              socket.send({ type: 'request-state', clientId });
+              scheduleBroadcast(loadState());
+            })
+            .on('close', () => {
+              syncConnected = false;
+              setSyncStatus('off', 'Reconnecting…');
+            })
+            .on('message', (event) => {
+              const msg = event && event.message != null ? event.message : event;
+              if (!msg || typeof msg !== 'object') return;
+              if (msg.clientId === clientId) return;
+
+              if (msg.type === 'hello' || msg.type === 'request-state') {
+                const state = loadState();
+                socket.send({
+                  type: 'state',
+                  clientId,
+                  updatedAt: state.updatedAt,
+                  payload: state,
+                });
+                return;
+              }
+
+              if (msg.type === 'state' && msg.payload) {
+                const applied = applyRemoteState(msg.payload);
+                if (applied) setSyncStatus('live', 'Live sync');
               }
             });
-            return state;
-          } catch (e) {
-            return defaultState();
-          }
+        } catch (e) {
+          setSyncStatus('off', 'Sync offline');
         }
+      }
 
-        function saveState(state) {
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-        }
+      document.getElementById('team-grid').addEventListener('click', (e) => {
+        const btn = e.target.closest('[data-team]');
+        if (!btn) return;
+        openTeam(btn.getAttribute('data-team'));
+      });
 
-        function formatNum(n) {
-          return Number(n).toLocaleString('en-US');
-        }
-
-        function remainingBudget(team) {
-          return START_SCORE - team.visits * VISIT_COST - team.mines * MINE_COST;
-        }
-
-        function finalScore(team) {
-          return remainingBudget(team) + (team.bonus ? BONUS : 0);
-        }
-
-        function totalCost(team) {
-          return team.visits * VISIT_COST + team.mines * MINE_COST;
-        }
-
-        function pushHistory(team, label, delta) {
-          team.history.unshift({ label: label, delta: delta, ts: Date.now() });
-          if (team.history.length > 40) team.history.length = 40;
-        }
-
-        function toast(msg, kind) {
-          var el = document.getElementById('toast');
-          el.textContent = msg;
-          el.className = 'toast show' + (kind ? ' ' + kind : '');
-          clearTimeout(toastTimer);
-          toastTimer = setTimeout(function () {
-            el.className = 'toast';
-          }, 1400);
-        }
-
-        function showModal(title, msg, onOk) {
-          document.getElementById('modal-title').textContent = title;
-          document.getElementById('modal-msg').textContent = msg;
-          modalAction = onOk;
-          document.getElementById('modal').classList.add('show');
-        }
-
-        function hideModal() {
-          modalAction = null;
-          document.getElementById('modal').classList.remove('show');
-        }
-
-        function showScreen(name) {
-          document.getElementById('screen-home').classList.toggle('active', name === 'home');
-          document.getElementById('screen-team').classList.toggle('active', name === 'team');
-          window.scrollTo(0, 0);
-        }
-
-        function mutateActive(mutator, msg, kind) {
-          var state = loadState();
-          var team = state.teams[activeTeamId];
-          if (!team) return;
-          if (mutator(team) === false) return;
-          if (team.mines > team.visits) team.mines = team.visits;
-          saveState(state);
-          renderTeam();
-          renderHome();
-          if (msg) toast(msg, kind || 'ok');
-        }
-
-        function openTeam(id) {
-          activeTeamId = id;
-          showScreen('team');
-          renderTeam();
-        }
-
-        function renderHome() {
-          var state = loadState();
-          var grid = document.getElementById('team-grid');
-          var org = 0;
-          var html = '';
-          TEAM_IDS.forEach(function (id) {
-            var team = state.teams[id];
-            var final = finalScore(team);
-            org += final;
-            var meta = TEAM_META[id];
-            html +=
-              '<button type="button" class="tile ' + meta.className + '" data-team="' + id + '">' +
-              '<div class="name">' + meta.name + '</div>' +
-              '<div class="meta">Visits ' + team.visits + ' · Mines ' + team.mines + (team.bonus ? ' · Bonus' : '') + '</div>' +
-              '<div class="score">' + formatNum(final) + '</div>' +
-              '</button>';
-          });
-          grid.innerHTML = html;
-          document.getElementById('org-total').textContent = formatNum(org);
-        }
-
-        function renderTeam() {
-          var state = loadState();
-          var team = state.teams[activeTeamId];
-          var meta = TEAM_META[activeTeamId];
-          var remain = remainingBudget(team);
-          var final = finalScore(team);
-
-          var topbar = document.getElementById('team-topbar');
-          topbar.className = 'topbar team-' + meta.className;
-          document.getElementById('team-title').textContent = meta.name;
-          document.getElementById('team-score').textContent = formatNum(remain);
-          document.getElementById('team-final-hint').textContent =
-            'Final score (with bonus): ' + formatNum(final) + (team.bonus ? ' (bonus applied)' : ' (no bonus)');
-          document.getElementById('stat-visits').textContent = String(team.visits);
-          document.getElementById('stat-mines').textContent = String(team.mines);
-          document.getElementById('stat-cost').textContent = formatNum(totalCost(team));
-
-          var toggle = document.getElementById('bonus-toggle');
-          if (toggle.checked !== team.bonus) toggle.checked = team.bonus;
-
-          var historyEl = document.getElementById('team-history');
-          if (!team.history.length) {
-            historyEl.innerHTML = '<div class="history-empty">No actions yet.</div>';
-          } else {
-            historyEl.innerHTML = team.history.slice(0, 12).map(function (item) {
-              var time = new Date(item.ts).toLocaleTimeString('en-GB', {
-                hour: '2-digit', minute: '2-digit', second: '2-digit'
-              });
-              var delta = (item.delta > 0 ? '+' : '') + formatNum(item.delta);
-              return '<div class="history-item"><span>' + time + ' · ' + item.label +
-                '</span><strong>' + delta + '</strong></div>';
-            }).join('');
-          }
-        }
-
-        document.getElementById('team-grid').addEventListener('click', function (e) {
-          var btn = e.target.closest('[data-team]');
-          if (!btn) return;
-          openTeam(btn.getAttribute('data-team'));
-        });
-
-        document.getElementById('btn-back').addEventListener('click', function () {
-          showScreen('home');
-          renderHome();
-        });
-
-        document.getElementById('btn-visit').addEventListener('click', function () {
-          mutateActive(function (team) {
-            team.visits += 1;
-            pushHistory(team, 'Visit', -VISIT_COST);
-          }, 'Logged visit −1,000');
-        });
-
-        document.getElementById('btn-mine-hit').addEventListener('click', function () {
-          mutateActive(function (team) {
-            team.visits += 1;
-            team.mines += 1;
-            pushHistory(team, 'Hit mine (visit + penalty)', -(VISIT_COST + MINE_COST));
-          }, 'Logged mine hit −3,000');
-        });
-
-        document.getElementById('btn-mine-only').addEventListener('click', function () {
-          var state = loadState();
-          var team = state.teams[activeTeamId];
-          if (team.mines >= team.visits) {
-            toast('Mines cannot exceed visits', 'warn');
-            return;
-          }
-          mutateActive(function (t) {
-            t.mines += 1;
-            pushHistory(t, 'Mine penalty', -MINE_COST);
-          }, 'Added mine penalty −2,000', 'warn');
-        });
-
-        document.getElementById('bonus-toggle').addEventListener('change', function (e) {
-          var checked = !!e.target.checked;
-          var state = loadState();
-          if (state.teams[activeTeamId].bonus === checked) return;
-          mutateActive(function (team) {
-            team.bonus = checked;
-            pushHistory(team, checked ? 'Bonus added' : 'Bonus removed', checked ? BONUS : -BONUS);
-          }, checked ? 'Bonus +50,000 applied' : 'Bonus removed');
-        });
-
-        document.querySelector('.chips').addEventListener('click', function (e) {
-          var btn = e.target.closest('[data-adjust]');
-          if (!btn) return;
-          var parts = btn.getAttribute('data-adjust').split(':');
-          var kind = parts[0];
-          var delta = Number(parts[1]);
-          mutateActive(function (team) {
-            if (kind === 'visits') {
-              var next = team.visits + delta;
-              if (next < 0) return false;
-              team.visits = next;
-              if (team.mines > team.visits) team.mines = team.visits;
-              pushHistory(team, delta > 0 ? 'Manual +visit' : 'Manual −visit', delta * -VISIT_COST);
-            } else {
-              var nextM = team.mines + delta;
-              if (nextM < 0) return false;
-              if (nextM > team.visits) {
-                toast('Log a visit before adding a mine', 'warn');
-                return false;
-              }
-              team.mines = nextM;
-              pushHistory(team, delta > 0 ? 'Manual +mine' : 'Manual −mine', delta * -MINE_COST);
-            }
-          });
-        });
-
-        document.getElementById('btn-undo').addEventListener('click', function () {
-          var state = loadState();
-          var team = state.teams[activeTeamId];
-          if (!team.history.length) {
-            toast('Nothing to undo', 'warn');
-            return;
-          }
-          var last = team.history[0];
-          mutateActive(function (t) {
-            t.history.shift();
-            if (last.label.indexOf('Hit mine') === 0) {
-              t.visits = Math.max(0, t.visits - 1);
-              t.mines = Math.max(0, t.mines - 1);
-            } else if (last.label.indexOf('Visit') === 0 || last.label.indexOf('Manual +visit') === 0) {
-              t.visits = Math.max(0, t.visits - 1);
-              if (t.mines > t.visits) t.mines = t.visits;
-            } else if (last.label.indexOf('Manual −visit') === 0) {
-              t.visits += 1;
-            } else if (last.label.indexOf('Mine penalty') === 0 || last.label.indexOf('Manual +mine') === 0) {
-              t.mines = Math.max(0, t.mines - 1);
-            } else if (last.label.indexOf('Manual −mine') === 0) {
-              t.mines += 1;
-            } else if (last.label.indexOf('Bonus added') === 0) {
-              t.bonus = false;
-            } else if (last.label.indexOf('Bonus removed') === 0) {
-              t.bonus = true;
-            }
-          }, 'Undid: ' + last.label, 'warn');
-        });
-
-        document.getElementById('btn-reset-team').addEventListener('click', function () {
-          showModal('Reset ' + TEAM_META[activeTeamId].name, 'This clears all visits, mines, and bonus for this team.', function () {
-            var state = loadState();
-            state.teams[activeTeamId] = defaultTeam(activeTeamId);
-            saveState(state);
-            renderTeam();
-            renderHome();
-            toast('Team reset', 'warn');
-          });
-        });
-
-        document.getElementById('btn-reset-all').addEventListener('click', function () {
-          showModal('Reset all teams', 'This clears scores and history for all four teams. Continue?', function () {
-            saveState(defaultState());
-            renderHome();
-            toast('All teams reset', 'warn');
-          });
-        });
-
-        document.getElementById('modal-cancel').addEventListener('click', hideModal);
-        document.getElementById('modal-ok').addEventListener('click', function () {
-          var action = modalAction;
-          hideModal();
-          if (action) action();
-        });
-
-        if ('serviceWorker' in navigator) {
-          window.addEventListener('load', function () {
-            navigator.serviceWorker.register('./service-worker.js').catch(function () {});
-          });
-        }
-
+      document.getElementById('btn-back').addEventListener('click', () => {
+        showScreen('home');
         renderHome();
-      })();
+      });
+
+      document.getElementById('btn-visit').addEventListener('click', () => {
+        mutateActive((team) => {
+          team.visits += 1;
+          pushHistory(team, 'Visit', -VISIT_COST);
+        }, 'Logged visit −1,000');
+      });
+
+      document.getElementById('btn-mine-hit').addEventListener('click', () => {
+        mutateActive((team) => {
+          team.visits += 1;
+          team.mines += 1;
+          pushHistory(team, 'Hit mine (visit + penalty)', -(VISIT_COST + MINE_COST));
+        }, 'Logged mine hit −3,000');
+      });
+
+      document.getElementById('btn-mine-only').addEventListener('click', () => {
+        const state = loadState();
+        const team = state.teams[activeTeamId];
+        if (team.mines >= team.visits) {
+          toast('Mines cannot exceed visits', 'warn');
+          return;
+        }
+        mutateActive((t) => {
+          t.mines += 1;
+          pushHistory(t, 'Mine penalty', -MINE_COST);
+        }, 'Added mine penalty −2,000', 'warn');
+      });
+
+      document.getElementById('bonus-toggle').addEventListener('change', (e) => {
+        const checked = !!e.target.checked;
+        const state = loadState();
+        if (state.teams[activeTeamId].bonus === checked) return;
+        mutateActive((team) => {
+          team.bonus = checked;
+          pushHistory(team, checked ? 'Bonus added' : 'Bonus removed', checked ? BONUS : -BONUS);
+        }, checked ? 'Bonus +50,000 applied' : 'Bonus removed');
+      });
+
+      document.querySelector('.chips').addEventListener('click', (e) => {
+        const btn = e.target.closest('[data-adjust]');
+        if (!btn) return;
+        const [kind, deltaRaw] = btn.getAttribute('data-adjust').split(':');
+        const delta = Number(deltaRaw);
+        mutateActive((team) => {
+          if (kind === 'visits') {
+            const next = team.visits + delta;
+            if (next < 0) return false;
+            team.visits = next;
+            if (team.mines > team.visits) team.mines = team.visits;
+            pushHistory(team, delta > 0 ? 'Manual +visit' : 'Manual −visit', delta * -VISIT_COST);
+          } else {
+            const nextM = team.mines + delta;
+            if (nextM < 0) return false;
+            if (nextM > team.visits) {
+              toast('Log a visit before adding a mine', 'warn');
+              return false;
+            }
+            team.mines = nextM;
+            pushHistory(team, delta > 0 ? 'Manual +mine' : 'Manual −mine', delta * -MINE_COST);
+          }
+        });
+      });
+
+      document.getElementById('btn-undo').addEventListener('click', () => {
+        const state = loadState();
+        const team = state.teams[activeTeamId];
+        if (!team.history.length) {
+          toast('Nothing to undo', 'warn');
+          return;
+        }
+        const last = team.history[0];
+        mutateActive((t) => {
+          t.history.shift();
+          if (last.label.indexOf('Hit mine') === 0) {
+            t.visits = Math.max(0, t.visits - 1);
+            t.mines = Math.max(0, t.mines - 1);
+          } else if (last.label.indexOf('Visit') === 0 || last.label.indexOf('Manual +visit') === 0) {
+            t.visits = Math.max(0, t.visits - 1);
+            if (t.mines > t.visits) t.mines = t.visits;
+          } else if (last.label.indexOf('Manual −visit') === 0) {
+            t.visits += 1;
+          } else if (last.label.indexOf('Mine penalty') === 0 || last.label.indexOf('Manual +mine') === 0) {
+            t.mines = Math.max(0, t.mines - 1);
+          } else if (last.label.indexOf('Manual −mine') === 0) {
+            t.mines += 1;
+          } else if (last.label.indexOf('Bonus added') === 0) {
+            t.bonus = false;
+          } else if (last.label.indexOf('Bonus removed') === 0) {
+            t.bonus = true;
+          }
+        }, 'Undid: ' + last.label, 'warn');
+      });
+
+      document.getElementById('btn-reset-team').addEventListener('click', () => {
+        showModal('Reset ' + TEAM_META[activeTeamId].name, 'This clears all visits, mines, and bonus for this team.', () => {
+          const state = loadState();
+          state.teams[activeTeamId] = defaultTeam(activeTeamId);
+          saveState(state);
+          renderAll();
+          toast('Team reset', 'warn');
+        });
+      });
+
+      document.getElementById('btn-reset-all').addEventListener('click', () => {
+        showModal('Reset all teams', 'This clears scores and history for all four teams. The timer is kept. Continue?', () => {
+          const state = loadState();
+          const timer = state.timer;
+          const next = defaultState();
+          next.timer = timer;
+          saveState(next);
+          renderAll();
+          toast('All teams reset', 'warn');
+        });
+      });
+
+      document.getElementById('modal-cancel').addEventListener('click', hideModal);
+      document.getElementById('modal-ok').addEventListener('click', () => {
+        const action = modalAction;
+        hideModal();
+        if (action) action();
+      });
+
+      document.getElementById('btn-timer-start').addEventListener('click', startTimer);
+      document.getElementById('btn-timer-pause').addEventListener('click', pauseTimer);
+      document.getElementById('btn-timer-stop').addEventListener('click', stopTimer);
+
+      window.addEventListener('storage', (e) => {
+        if (e.key === STORAGE_KEY) renderAll();
+      });
+
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('./service-worker.js').catch(() => {});
+        });
+      }
+
+      renderAll();
+      ensureTicker();
+      setupSync();
     </script>
   </body>
 </html>
