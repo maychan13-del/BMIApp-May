@@ -511,9 +511,7 @@
       </div>
     </div>
 
-    <script type="module">
-      import { connect } from 'https://cdn.jsdelivr.net/npm/itty-sockets@0.9.3/connect.mjs';
-
+    <script>
       const STORAGE_KEY = 'minefield_scores_v2';
       const START_SCORE = 62000;
       const VISIT_COST = 1000;
@@ -528,6 +526,7 @@
         D: { name: 'Team D', className: 'd' },
       };
       const SYNC_CHANNEL = 'minefield-score-spc_0816a62362394a878d943d9122492b3d';
+      const SYNC_WS = 'wss://itty.ws/c/' + SYNC_CHANNEL;
 
       let activeTeamId = 'A';
       let modalAction = null;
@@ -537,6 +536,10 @@
       let applyingRemote = false;
       let syncConnected = false;
       let socket = null;
+      let reconnectTimer = null;
+      let reconnectAttempt = 0;
+      let syncReadyTimer = null;
+      let hasSyncedOnce = false;
 
       const clientId =
         sessionStorage.getItem('minefield_client_id') ||
@@ -566,17 +569,38 @@
         });
         return {
           version: 1,
-          updatedAt: Date.now(),
+          // Fresh empty state must lose to any real peer update (LWW).
+          updatedAt: 0,
           updatedBy: clientId,
           teams,
           timer: defaultTimer(),
         };
       }
 
+      function isBlankState(state) {
+        if (!state || !state.teams) return true;
+        const idleTimer =
+          !state.timer ||
+          (state.timer.status === 'idle' &&
+            Number(state.timer.remainingMs) === TIMER_MS);
+        return (
+          idleTimer &&
+          TEAM_IDS.every((id) => {
+            const t = state.teams[id] || {};
+            return (
+              !Number(t.visits) &&
+              !Number(t.mines) &&
+              !t.bonus &&
+              !(Array.isArray(t.history) && t.history.length)
+            );
+          })
+        );
+      }
+
       function normalizeState(raw) {
         const state = defaultState();
         if (!raw || typeof raw !== 'object') return state;
-        state.updatedAt = Number(raw.updatedAt) || Date.now();
+        state.updatedAt = Math.max(0, Number(raw.updatedAt) || 0);
         state.updatedBy = raw.updatedBy || '';
         TEAM_IDS.forEach((id) => {
           const t = (raw.teams && raw.teams[id]) || {};
@@ -602,6 +626,8 @@
           state.timer.endsAt = Date.now() + state.timer.remainingMs;
         }
         if (state.timer.status !== 'running') state.timer.endsAt = null;
+        // Empty local snapshots that previously stamped Date.now() must not beat peers.
+        if (isBlankState(state) && !state.updatedBy) state.updatedAt = 0;
         return state;
       }
 
@@ -609,7 +635,13 @@
         try {
           const raw = localStorage.getItem(STORAGE_KEY);
           if (!raw) return defaultState();
-          return normalizeState(JSON.parse(raw));
+          const state = normalizeState(JSON.parse(raw));
+          // Migrate: blank caches with inflated timestamps lose to live peers.
+          if (isBlankState(state)) {
+            state.updatedAt = 0;
+            state.updatedBy = clientId;
+          }
+          return state;
         } catch (e) {
           return defaultState();
         }
@@ -678,17 +710,39 @@
         text.textContent = label;
       }
 
+      function sendSync(msg) {
+        if (!socket || socket.readyState !== WebSocket.OPEN) return false;
+        try {
+          socket.send(JSON.stringify(msg));
+          return true;
+        } catch (e) {
+          return false;
+        }
+      }
+
       function scheduleBroadcast(state) {
         clearTimeout(broadcastTimer);
         broadcastTimer = setTimeout(() => {
-          if (!socket || !syncConnected) return;
-          socket.send({
+          if (!syncConnected) return;
+          sendSync({
             type: 'state',
             clientId,
             updatedAt: state.updatedAt,
             payload: state,
           });
-        }, 120);
+        }, 80);
+      }
+
+      function shareLocalState() {
+        const state = loadState();
+        // Never push a blank local snapshot over peers that may hold scores.
+        if (isBlankState(state) && state.updatedAt === 0) return;
+        sendSync({
+          type: 'state',
+          clientId,
+          updatedAt: state.updatedAt,
+          payload: state,
+        });
       }
 
       function applyRemoteState(remote) {
@@ -696,11 +750,56 @@
         const next = normalizeState(remote);
         if (next.updatedAt < local.updatedAt) return false;
         if (next.updatedAt === local.updatedAt && next.updatedBy === local.updatedBy) return false;
+        // Prefer any non-blank remote over a blank local with equal/older stamp.
+        if (isBlankState(next) && !isBlankState(local) && next.updatedAt <= local.updatedAt) {
+          return false;
+        }
         applyingRemote = true;
         localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
         applyingRemote = false;
+        hasSyncedOnce = true;
         renderAll();
         return true;
+      }
+
+      function handleSyncPayload(msg) {
+        if (!msg || typeof msg !== 'object') return;
+        if (msg.clientId === clientId) return;
+
+        if (msg.type === 'hello' || msg.type === 'request-state') {
+          shareLocalState();
+          return;
+        }
+
+        if (msg.type === 'state' && msg.payload) {
+          const applied = applyRemoteState(msg.payload);
+          if (applied) setSyncStatus('live', 'Live sync');
+        }
+      }
+
+      function handleSocketMessage(event) {
+        let data;
+        try {
+          data = JSON.parse(event.data);
+        } catch (e) {
+          return;
+        }
+        // itty.ws wraps user payloads as { uid, date, message }
+        if (data && Object.prototype.hasOwnProperty.call(data, 'message')) {
+          handleSyncPayload(data.message);
+          return;
+        }
+        // join/leave/error control frames — ignore
+        if (data && data.type && !data.payload) return;
+        handleSyncPayload(data);
+      }
+
+      function scheduleReconnect() {
+        clearTimeout(reconnectTimer);
+        syncConnected = false;
+        setSyncStatus('off', 'Reconnecting…');
+        const delay = Math.min(10000, 600 * Math.pow(1.7, reconnectAttempt++));
+        reconnectTimer = setTimeout(setupSync, delay);
       }
 
       function mutateActive(mutator, msg, kind) {
@@ -867,45 +966,64 @@
 
       function setupSync() {
         setSyncStatus('', 'Connecting…');
+        clearTimeout(reconnectTimer);
+        clearTimeout(syncReadyTimer);
         try {
-          socket = connect(SYNC_CHANNEL, { as: clientId });
-          socket
-            .on('open', () => {
-              syncConnected = true;
-              setSyncStatus('live', 'Live sync');
-              socket.send({ type: 'hello', clientId, updatedAt: loadState().updatedAt });
-              socket.send({ type: 'request-state', clientId });
-              scheduleBroadcast(loadState());
-            })
-            .on('close', () => {
-              syncConnected = false;
-              setSyncStatus('off', 'Reconnecting…');
-            })
-            .on('message', (event) => {
-              const msg = event && event.message != null ? event.message : event;
-              if (!msg || typeof msg !== 'object') return;
-              if (msg.clientId === clientId) return;
+          if (socket) {
+            try {
+              socket.onopen = null;
+              socket.onclose = null;
+              socket.onerror = null;
+              socket.onmessage = null;
+              socket.close();
+            } catch (e) {}
+            socket = null;
+          }
 
-              if (msg.type === 'hello' || msg.type === 'request-state') {
-                const state = loadState();
-                socket.send({
-                  type: 'state',
-                  clientId,
-                  updatedAt: state.updatedAt,
-                  payload: state,
-                });
-                return;
-              }
+          const ws = new WebSocket(SYNC_WS + '?as=' + encodeURIComponent(clientId));
+          socket = ws;
 
-              if (msg.type === 'state' && msg.payload) {
-                const applied = applyRemoteState(msg.payload);
-                if (applied) setSyncStatus('live', 'Live sync');
-              }
-            });
+          ws.onopen = () => {
+            if (socket !== ws) return;
+            syncConnected = true;
+            reconnectAttempt = 0;
+            setSyncStatus('live', 'Live sync');
+            sendSync({ type: 'hello', clientId, updatedAt: loadState().updatedAt });
+            sendSync({ type: 'request-state', clientId });
+            // Give peers a moment to answer before sharing local state.
+            clearTimeout(syncReadyTimer);
+            syncReadyTimer = setTimeout(() => {
+              shareLocalState();
+              hasSyncedOnce = true;
+            }, 450);
+          };
+
+          ws.onmessage = (event) => {
+            if (socket !== ws) return;
+            handleSocketMessage(event);
+          };
+
+          ws.onerror = () => {
+            if (socket !== ws) return;
+            setSyncStatus('off', 'Sync offline');
+          };
+
+          ws.onclose = () => {
+            if (socket !== ws) return;
+            socket = null;
+            scheduleReconnect();
+          };
         } catch (e) {
           setSyncStatus('off', 'Sync offline');
+          scheduleReconnect();
         }
       }
+
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible' && (!socket || socket.readyState > 1)) {
+          setupSync();
+        }
+      });
 
       document.getElementById('team-grid').addEventListener('click', (e) => {
         const btn = e.target.closest('[data-team]');
@@ -1050,7 +1168,12 @@
 
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
-          navigator.serviceWorker.register('./service-worker.js').catch(() => {});
+          navigator.serviceWorker
+            .register('./service-worker.js?v=5')
+            .then((reg) => {
+              if (reg.update) reg.update();
+            })
+            .catch(() => {});
         });
       }
 
