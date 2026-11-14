@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0a1628" />
+  <meta name="description" content="FAKE OUT! A Hong Kong media-literacy game — spot misinformation, disinformation and AI fakes before they go viral." />
+  <title>FAKE OUT! Can You Spot the Lie?</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700;800&family=Syne:wght@600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="bg-layer" aria-hidden="true"></div>
+  <div class="noise" aria-hidden="true"></div>
+
+  <header class="topbar">
+    <div class="brand-chip" aria-hidden="true">FAKE OUT!</div>
+    <div class="hud" id="hud" hidden>
+      <div class="hud-lives" id="hud-lives" aria-label="Lives">❤️❤️❤️</div>
+      <div class="hud-score">
+        <span class="label">Score</span>
+        <strong id="hud-score">0</strong>
+      </div>
+      <div class="hud-mult">
+        <span class="label">Combo</span>
+        <strong id="hud-mult">×1</strong>
+      </div>
+    </div>
+    <button type="button" class="icon-btn" id="mute-btn" aria-pressed="false" aria-label="Mute sounds" title="Mute">🔊</button>
+  </header>
+
+  <main id="app">
+    <!-- START -->
+    <section class="screen active" id="screen-start" aria-labelledby="title-start">
+      <div class="hero">
+        <p class="eyebrow animate-in">Hong Kong · Media literacy · ~8–10 min</p>
+        <h1 id="title-start" class="logo animate-in delay-1">
+          <span class="logo-fake">FAKE OUT!</span>
+          <span class="logo-sub">Can You Spot the Lie?</span>
+        </h1>
+        <p class="lede animate-in delay-2">
+          Sort the rumours, name the tricks, and stop fake posts before they go viral lah —
+          from typhoon signals to scholarship scams. 🕵️✨
+        </p>
+        <form class="nick-form animate-in delay-3" id="nick-form" autocomplete="off">
+          <label for="nickname">Your nickname</label>
+          <div class="nick-row">
+            <input id="nickname" name="nickname" type="text" maxlength="16" placeholder="e.g. FactChecker_88" required />
+            <button type="submit" class="btn primary">Let’s go! ▶</button>
+          </div>
+        </form>
+        <p class="highscore-line animate-in delay-4" id="highscore-line">🏆 Best on this device: —</p>
+      </div>
+      <aside class="how-card animate-in delay-4">
+        <h2>How it works</h2>
+        <ul>
+          <li>❤️ 3 lives — wrong answer = one heart gone</li>
+          <li>🔥 Streaks boost score up to ×4</li>
+          <li>⏱️ Faster answers = bonus points</li>
+          <li>🧰 One of each power-up per game</li>
+        </ul>
+      </aside>
+    </section>
+
+    <!-- LEVEL INTRO -->
+    <section class="screen" id="screen-level" aria-live="polite">
+      <div class="level-splash">
+        <p class="level-kicker" id="level-kicker">Level 1</p>
+        <h2 id="level-title">Mis, Dis or Mal?</h2>
+        <p id="level-desc"></p>
+        <button type="button" class="btn primary" id="level-start-btn">Start level</button>
+      </div>
+    </section>
+
+    <!-- QUESTION -->
+    <section class="screen" id="screen-play">
+      <div class="play-meta">
+        <span id="play-level-tag">Level 1</span>
+        <span id="play-progress">1 / 6</span>
+      </div>
+      <div class="timer-wrap" aria-hidden="true">
+        <div class="timer-bar" id="timer-bar"></div>
+      </div>
+      <div class="powerups" id="powerups">
+        <button type="button" class="pwr" data-pwr="hint" id="pwr-hint" title="Fact-Check Lens">🔍 <span>Lens</span></button>
+        <button type="button" class="pwr" data-pwr="freeze" id="pwr-freeze" title="Freeze timer">❄️ <span>Freeze</span></button>
+        <button type="button" class="pwr" data-pwr="fifty" id="pwr-fifty" title="50/50">✂️ <span>50/50</span></button>
+      </div>
+      <div class="viral-meter" id="viral-meter" hidden>
+        <div class="viral-label">Viral Meter · people reached by fakes you shared</div>
+        <div class="viral-track"><div class="viral-fill" id="viral-fill"></div></div>
+        <strong id="viral-count">0</strong>
+      </div>
+      <div class="investigate-row" id="investigate-row" hidden>
+        <span>Investigate tokens: <strong id="invest-count">3</strong></span>
+        <button type="button" class="btn ghost small" id="invest-btn">🔎 Investigate</button>
+      </div>
+      <article class="prompt-card" id="prompt-card">
+        <p class="prompt-kind" id="prompt-kind"></p>
+        <div class="prompt-body" id="prompt-body"></div>
+        <p class="hint-line" id="hint-line" hidden></p>
+        <div class="invest-result" id="invest-result" hidden></div>
+      </article>
+      <div class="choices" id="choices" role="group" aria-label="Answer choices"></div>
+    </section>
+
+    <!-- EXPLAIN -->
+    <section class="screen" id="screen-explain">
+      <div class="explain-card" id="explain-card">
+        <p class="explain-badge" id="explain-badge">Correct!</p>
+        <p class="explain-text" id="explain-text"></p>
+        <p class="explain-points" id="explain-points"></p>
+        <button type="button" class="btn primary" id="explain-next">Next ▶</button>
+      </div>
+    </section>
+
+    <!-- GAME OVER -->
+    <section class="screen" id="screen-over">
+      <div class="end-card">
+        <p class="end-emoji">😵</p>
+        <h2>Aiya… game over!</h2>
+        <p id="over-msg">You ran out of hearts. The rumours win this round — but you can try again!</p>
+        <p class="score-big">Score <strong id="over-score">0</strong></p>
+        <button type="button" class="btn primary" id="retry-btn">Retry 🔄</button>
+        <button type="button" class="btn ghost" id="over-home-btn">Back to start</button>
+      </div>
+    </section>
+
+    <!-- RESULTS -->
+    <section class="screen" id="screen-results">
+      <div class="results">
+        <p class="results-kicker" id="results-kicker">Victory!</p>
+        <h2 class="rank-title" id="rank-title">🦉 Sharp Owl</h2>
+        <p class="results-nick" id="results-nick"></p>
+        <div class="stat-grid">
+          <div><span>Final score</span><strong id="res-score">0</strong></div>
+          <div><span>Accuracy</span><strong id="res-acc">0%</strong></div>
+          <div><span>Best streak</span><strong id="res-streak">0</strong></div>
+          <div><span>“Infected”</span><strong id="res-infect">0</strong></div>
+        </div>
+        <p class="new-best" id="new-best" hidden>🏆 New high score on this device!</p>
+        <div class="tips">
+          <h3>Top 5 Fact-Check Tips · SIFT</h3>
+          <ol>
+            <li><strong>Stop.</strong> Pause before you share — emotion is a red flag.</li>
+            <li><strong>Investigate the source.</strong> Who wrote it? Are they real?</li>
+            <li><strong>Find better coverage.</strong> Do trusted outlets report the same?</li>
+            <li><strong>Trace to the original.</strong> Photos, quotes and stats travel without context.</li>
+            <li><strong>Ask a friend / teacher.</strong> Two brains beat one rumour. 💪</li>
+          </ol>
+        </div>
+        <button type="button" class="btn primary" id="again-btn">Play Again</button>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-foot">
+    <p>All posts &amp; people are fictional · Safe for class · Made for Hong Kong students</p>
+  </footer>
+
+  <script src="audio.js"></script>
+  <script src="content.js"></script>
+  <script src="game.js"></script>
+</body>
+</html>
